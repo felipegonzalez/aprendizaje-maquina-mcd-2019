@@ -73,7 +73,7 @@ library(tidyverse)
 medidor_vid <- load.video("figuras/gauge_raw.mp4", fps = 5)
 ```
 
-![](https://media.giphy.com/media/S4HVNskqDGOADaeOY2/giphy.gif)
+
 
 Nótese que las imágenes y videos son matrices o arreglos de valores de pixeles, por ejemplo
 estas son las dimensiones para el video y para un cuadro:
@@ -151,10 +151,22 @@ angulos <- 1:num_cuadros %>%
 angulos_tbl <- tibble(t = 1:num_cuadros, angulo = angulos)
 ```
 
-```{r}
-ggplot(angulos_tbl, aes(x = t, y = angulo)) + 
-  geom_line() + geom_point()
+
+```{r, eval = FALSE}
+plots <- map(1:71, 
+  ~ ggplot(angulos_tbl %>% filter( t <= .x),  aes(x = t, y = angulo)) + 
+  geom_line() + geom_point() + xlim(c(1,71)) + ylim(c(70, 360)))
+
 ```
+
+```{r chunk-label, eval = FALSE, fig.show='animate', ffmpeg.format='gif', dev='jpeg', interval=0.2}
+walk(plots, print)
+```
+
+
+![](https://media.giphy.com/media/S4HVNskqDGOADaeOY2/giphy.gif){width=150px}
+![](https://media.giphy.com/media/hVm56lMsCDLHSsSOH0/giphy.gif){width=400px}
+
 
 ---
 
@@ -270,7 +282,7 @@ ocupación, número de focos en el hogar, etc.)
 
 
 
-#### Aprendizaje supervisado {-}
+## Supervisado y no supervisado
 
 Las tareas de aprendizaje se dividen en dos grandes partes: aprendizaje
 supervisado y aprendizaje no supervisado.
@@ -503,7 +515,7 @@ Incluso este ejemplo tan simple muestra las dificultades que vamos a
 enfrentar, y la importancia de determinar con cuidado qué tanta información
 tenemos, y qué tan buenas pueden ser nuestras predicciones.
 
-## Predicciones
+### Predicciones {-}
 
 La idea es entonces producir una estimación de f que nos permita hacer predicciones.
 
