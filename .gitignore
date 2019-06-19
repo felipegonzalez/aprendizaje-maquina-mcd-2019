@@ -1,7 +1,7 @@
 # History files
 .Rhistory
 .Rapp.history
-
+.bash_history
 # Session Data files
 .RData
 
@@ -40,3 +40,5 @@ _book/
 *.rds
 *_files/
 .Rproj.user
+.netlify/
+.rstudio/
