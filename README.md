@@ -2,10 +2,11 @@
 
 Notas y material para el curso de Aprendizaje de Máquina
 
-
-- [Notas](). Estas notas son producidas
+- [Notas](https://trusting-payne-50ed4b.netlify.com). Estas notas son producidas
 en un contenedor de [Docker](https://www.docker.com/products/docker-desktop) (con imagen base de [rocker *verse*](https://www.rocker-project.org), y unos
 8G de memoria) construido con el Dockerfile del repositorio. Para trabajar en este contenedor.
+
+### Trabajando con el contenedor
 
 1. En el directorio donde está *Dockerfile*, correr:
 ```
