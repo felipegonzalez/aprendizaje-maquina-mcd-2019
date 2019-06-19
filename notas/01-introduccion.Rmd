@@ -62,19 +62,21 @@ cantidades de reglas.
 
 Lectura de un medidor mediante imágenes. Supongamos que en
 una infraestructura donde hay medidores análogos (de electricidad, gas, etc.) que no se comunican. ¿Podríamos pensar en utilizar
-fotos tomadas por los usuarios para medir el consumo?
+fotos tomadas automáticamente para medir el consumo?
 
-Una solución a este problema podría resolverse si personas etiquetaran las fotografías, pero eso puede ser costoso. Quisiéramos procesar de manera automática las fotografías y
-producir una buena estimación del consumo. Por ejemplo, consideremos:
+Por ejemplo, consideramos el siguiente problema (tomado de [este sitio](http://raphael.candelier.fr/?blog=Image%20Moments)):
 
-```{r, message = FALSE, out.width = '500px'}
+```{r, message = FALSE}
 library(imager)
 library(tidyverse)
+# Datos: http://raphael.candelier.fr/?blog=Image%20Moments
 medidor_vid <- load.video("figuras/gauge_raw.mp4", fps = 5)
-plot(medidor_vid, frame = 20, axes = FALSE)
 ```
 
-Nótese que las imágenes y videos son matrices o arreglos de valores de pixeles:
+![](https://media.giphy.com/media/S4HVNskqDGOADaeOY2/giphy.gif)
+
+Nótese que las imágenes y videos son matrices o arreglos de valores de pixeles, por ejemplo
+estas son las dimensiones para el video y para un cuadro:
 ```{r}
 dim(medidor_vid)
 medidor <- frame(medidor_vid, 20)
@@ -91,10 +93,13 @@ que queremos. En este caso, construiremos estos cálculos a mano.
 Primero filtramos (extraemos canal rojo, difuminamos y
 aplicamos un umbral):
 
-```{r, out.width = "400px"}
-aguja <- medidor %>% R %>% 
-    isoblur(10) %>% 
-    threshold("99%") 
+```{r}
+medidor_1 <- medidor %>% R %>% isoblur(10)
+aguja <-  medidor_1 %>% threshold("99%") 
+layout(t(1:3))
+par(mar = c(2, 2, 2, 2))
+plot(medidor, axes = FALSE)
+plot(medidor_1, axes = FALSE)
 plot(aguja, axes = FALSE)
 ```
 
@@ -103,13 +108,18 @@ Podemos extraer las líneas que pasan por más pixeles
 encendidos (transformada de Hough). Con estas líneas tenemos
 calculada la orientación de la aguja:
 
-```{r, message=FALSE, out.width = "400px"}
+```{r, message=FALSE}
 lineas_h <- hough_line(aguja, ntheta = 500, data.frame=T)
 lineas_top <- lineas_h %>% 
     arrange(desc(score)) %>% 
     top_n(5) %>% 
     select(-score)  
 lineas_top
+layout(matrix(1:4, 2))
+par(mar = c(2, 2, 2, 2))
+plot(medidor, axes = FALSE)
+plot(medidor_1, axes = FALSE)
+plot(aguja, axes = FALSE)
 plot(aguja, axes = FALSE)
 pwalk(lineas_top, nfline, col="red")
 ```
@@ -139,10 +149,16 @@ angulos <- 1:num_cuadros %>%
     map_dbl(seleccionar_lineas)
 
 angulos_tbl <- tibble(t = 1:num_cuadros, angulo = angulos)
-ggplot(angulos_tbl, aes(x = t, y = angulo)) + geom_line() + geom_point()
 ```
 
-En el **enfoque de aprendizaje**, comenzamos con un conjunto de datos etiquetado
+```{r}
+ggplot(angulos_tbl, aes(x = t, y = angulo)) + 
+  geom_line() + geom_point()
+```
+
+---
+
+Por el contrario, en el **enfoque de aprendizaje**, comenzamos con un conjunto de datos etiquetado
 (por una persona, por un método costoso, etc.), y utilizamos alguna
 estructura general para aprender a producir la respuesta a partir
 de las imágenes. Por ejemplo, en este caso podríamos usar regresión
@@ -256,7 +272,7 @@ ocupación, número de focos en el hogar, etc.)
 
 #### Aprendizaje supervisado {-}
 
-Las tareas de aprendizaje se divide en dos grandes partes: aprendizaje
+Las tareas de aprendizaje se dividen en dos grandes partes: aprendizaje
 supervisado y aprendizaje no supervisado.
 
 
@@ -392,7 +408,7 @@ decir predicción de variables numéricas.
 
 ### Proceso generador de datos (modelo teórico) {-}
 
-Para entender lo que estamos intentando hacer, pensaremos en términos
+Pensaremos en términos
 de **modelos probabilísticos que generan los datos**. La idea es que
 estos representan los procesos que generan los datos o las observaciones.
 
@@ -406,8 +422,8 @@ que tiene valor esperado $\textrm{E}(\epsilon)=0$.
 
 
 - $f$ expresa la relación sistemática que hay entre $Y$ y $X$: para cada valor
-posible de $X$, la `contribución` de $X$ a $Y$ es $f(X)$. Típicamente
-es una función complicada de $X$
+posible de $X$, la *contribución* de $X$ a $Y$ es $f(X)$. Típicamente
+es una función complicada de $X$.
 - Pero $X$ **no determina** a $Y$, como en el ejemplo anterior de rendimiento
 de coches.
 Entonces agregamos una error aleatorio $\epsilon$, con media cero (si la media
@@ -521,14 +537,6 @@ pred_1 <- predict(lineal, newdata = data.frame(x=8))
 pred_1
 ```
 
-```{r, fig.width=5, fig.asp=0.7}
-ggplot(datos, aes(x = x, y = y)) + geom_point() + curva_1 +
-  geom_segment(x = 0, xend = 8, y = pred_1, yend = pred_1, colour = 'salmon') +
-  geom_segment(x = 8, xend = 8, y = 0, yend = pred_1, colour = 'salmon') +
-  annotate('text', x = 0.5, y = pred_1 + 100, label = round(pred_1, 1)) +
-  geom_point( x= 8, y =3200, col='green', size = 4)
-```
-
 Si observamos que para esta observación con $x_0=8$, resulta que 
 el correspondiente ingreso es $y_0=3200$, entonces el error sería
 ```{r}
@@ -557,8 +565,8 @@ es la **pérdida cuadrática**:
 
 $$L(Y, \hat{f}(X)) =  (Y - \hat{f}(X))^2$$
 Esta es una cantidad aleatoria, de modo que en algunos casos este error
-puede ser más grande o más chico. Usualmente buscamos una $\hat{f}$ de
-modo que el error promedio sea chico:
+puede ser más grande o más chico, aún para la misma predicción. 
+Usualmente buscamos una $\hat{f}$ de modo que el error promedio sea chico:
 
 $$Err = E (Y - \hat{f}(X))^2 $$
 
@@ -566,12 +574,11 @@ $$Err = E (Y - \hat{f}(X))^2 $$
 
 - Este valor esperado es sobre la población para la que queremos hacer
 predicciones. Es una cantidad teórica, no podemos calcularla con ningún
-conjunto de datos
+conjunto de datos.
 - Intenta demostrar que bajo error cuadrático medio y suponiendo
 el modelo aditivo $Y=f(X)+\epsilon$, el mejor predictor
 de $Y$ es $f(x)= E[Y|X=x]$. Es decir: lo que nos interesa es aproximar
 lo mejor que se pueda la esperanza condicional
-
 
 Ahora tenemos los elementos para definir con precisión el problema
 de aprendizaje supervisado. 
@@ -617,7 +624,7 @@ El punto más importante que discutiremos ahora es el siguiente:
 
 - Nótese que el error de entrenamiento se calcula sobre la muestra ${\mathcal L}$
 que se usó
-para construir $\hat{f}$, mientras que el error de prueba se calcula usando
+para construir $\hat{f}$, mientras que el error de predicción se estima usando
 una muestra independiente ${\mathcal T}$.
 - $\hat{Err}$ es una estimación razonable de el error de predicción $Err$ 
 (por ejemplo, $\hat{Err} \to Err$ cuando el tamaño de la muestra de prueba
@@ -694,6 +701,7 @@ df_mods <- df_mods %>%
 df_mods
 ```
 
+y el error de prueba más bajo está dado por la curva gris.
 
 **Observaciones**
 
@@ -756,7 +764,7 @@ que solo están presentes en nuestra muestra de entrenamiento.
 de entrenamiento.
 
 - El modelo es *demasiado complejo o flexible* y fácilmente se adapta a cualquier
-conjunto de datos, tanto señal como ruido
+conjunto de datos, tanto señal como ruido.
 
 En el ejemplo de arriba, también vimos que algunos modelos pueden tener desempeño
 malo porque no tienen la capacidad de aprender de patrones reales y generales
@@ -795,7 +803,7 @@ o particularidades no repetibles de nuestra muestra de entrenamiento.
 - Saber intuitivamente cuál es el grado adecuado de complejidad para un problema
 dado es difícil. Para decidirlo, evaluamos el desempeño de nuestros métodos
 usando una **muestra de prueba**. El nivel adecuado de complejidad se traduce
-en menos errores de predicción.
+en menos error de predicción.
 ```
 
 #### Discusión (error de entrenamiento y prueba)
@@ -805,7 +813,6 @@ error de predicción utilizando la muestra de entrenamiento.
 
 En primer lugar consideremos evaluar el error de predicción para
 un ejemplo $$(y_0- \hat{f}(x_0))^2$$
-
 donde $(x_0, y_0)$ es independiente de la muestra de entrenamiento. En este
 caso, la $\hat{f}$ está fija, y el valor esperado (error de predicción) nos
 da el error de predicción.
@@ -815,7 +822,7 @@ de
 $$(y- \hat{f}(x))^2$$
 requiere un cálculo más complicado, pues ¡ $\hat{f}$ también depende de $(x,y)$,
 pues se construye con la muestra de entrenamiento !
-Esta cantidad podría ser igual a cero para cualquier $(x,y)$ 
+Esta cantidad podría ser igual a cero para cualquier $(x,y)$, por ejemplo 
 (si nuestro algoritmo "interpola" como el en la curva roja del ejemplo anterior),
 y no necesariamente tiene qué ver con el error de predicción.
 
@@ -847,21 +854,23 @@ que realmente no nos interesa (error de entrenamiento) con la esperanza de minim
 la cantidad
 que nos interesa (error de predicción).
 
-Como es de esperarse, este esquema simple no funciona muy bien en general.
-Para que la solución anterior sea razonable o buena, entonces:
+Como es de esperarse, este esquema simple no funciona muy bien sin afinar
+algunos aspectos. Para que la solución anterior sea razonable o buena:
 
 - Tenemos que ser cuidadosos y poder regular la elección de la familia inicial de funciones
-(rectas? curvas muy flexibles? etc.), y/o
+(rectas? curvas muy flexibles? etc.). Buscamos familias que tengan
+la estructura adecuada para cada problema.
 - A veces tenemos que modificar el objetivo del problema de minimización para 
 que nos obligue encontrar un balance adecuado de complejidad y error de 
 predicción bajo. Por ejemplo, penalizar el objetivo 
 de modelos que son poco creíbles o demasiado complicados.
 - Perturbar la muestra de entrenamiento de distintas maneras para evitar que
-un algoritmo aprenda información irrelevante
+un algoritmo aprenda información irrelevante.
 
-La mayor parte del curso se concentra en considerar qué familias podemos
-utilizar, qué modificaciones de la función objetivo pueden hacerse,
-y qué perturbaciones pueden considerarse mejorar el desempeño predictivo de
+La mayor parte del curso se concentra en considerar qué familias o modelos podemos
+utilizar en distintos casos, qué modificaciones de la función objetivo pueden hacerse para
+mejorar el proceso de entrenamiento,
+y qué perturbaciones de los datos pueden considerarse para mejorar el desempeño predictivo de
 nuestros modelos.
 
 ## Resumen
