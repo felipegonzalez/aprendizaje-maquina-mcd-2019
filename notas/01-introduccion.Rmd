@@ -43,7 +43,8 @@ puede ser posible tomar mejores decisiones con algoritmos que con evaluaciones p
 o con reglas simples que toman en cuenta el ingreso mensual, por ejemplo.
 - Al resolver estos problemas computacionalmente tenemos
 oportunidad de aprender más del problema que nos interesa: estas
-soluciones forman parte de un ciclo de **análisis de datos** donde podemos aprender de una forma más concentrada cuáles son
+soluciones forman parte de un ciclo de **análisis de datos** donde podemos 
+aprender de una forma más concentrada cuáles son
 características y patrones importantes de nuestros datos.
 
 
@@ -236,41 +237,66 @@ muestra de hogares de la encuesta de ENIGH. Cada una de estas mediciones
 es muy costosa en tiempo y dinero. Sin embargo, hay otras características
 de los hogares que podemos medir.
 
+Por ejemplo, consideremos una muestra de la ENIGH 2010:
 
 ```{r, message = FALSE, warning = FALSE}
-dat_ingreso <- read_csv(file = '../datos/enigh-ejemplo.csv')
-head(dat_ingreso) %>% 
-    select(TAM_HOG, INGCOR, NOM_ENT_1, FOCOS, 
-           PISOS, marginación, tamaño_localidad)  %>%
+dat_ingreso <- read_csv(file = '../datos/enigh-ejemplo.csv') %>% 
+  mutate(num_focos = FOCOS) %>%
+  mutate(ingreso_miles = round(INGCOR / 1000)) %>% 
+  #mutate(marginación = recode(marginación, Alto = "Alto", `Muy alto`= "Muy Alto",
+  #    Medio = "Medio", Bajo = "Medio", `Muy bajo`="Bajo")) %>% 
+  mutate(tel_celular = ifelse(SERV_2 == 1, "Sí", "No")) %>% 
+  mutate(marginación = fct_reorder(marginación, ingreso_miles, median)) %>% 
+  rename(personas_ocupadas = PEROCU)
+
+sample_n(dat_ingreso, 10) %>% 
+    select(NOM_ENT..307, num_focos, marginación, 
+           tel_celular, personas_ocupadas, ingreso_miles)  %>%
+    arrange(desc(ingreso_miles)) %>% 
     knitr::kable()
 ```
 
 ```{r, fig.width=5, fig.asp=0.7}
-ggplot(dat_ingreso, aes(x = INGTOT / 1000)) +  
-  geom_histogram(bins = 100) + 
-  scale_x_log10(breaks = c(2.5, 5, 10, 20, 40, 80, 160, 320, 640, 1280)) +
-    xlab("Ingreso trimestral (miles de pesos)")
+print("Percentiles de ingreso (miles de pesos)")
+quantile(dat_ingreso$ingreso_miles, probs= c(0.05, 0.10,0.5,0.9, 0.95)) %>% round(2)
 ```
 
-Pero quizá podemos usar otras variables más fácilmente medibles
-para predecir el ingreso de un hogar. Por ejemplo, si consideramos el número
-de focos en la vivienda:
+Quizá podemos usar otras variables más fácilmente medibles
+para predecir el ingreso de un hogar. Por ejemplo, podríamos
+considerar variables de entorno (marginación del municipio),
+del hogar (si tienen celular), y de las personas dentro del
+hogar (número de personas ocupadas):
 
-```{r, message = FALSE, warning = FALSE, fig.width=5, fig.asp=0.7}
-ggplot(dat_ingreso, aes(x = FOCOS, y = INGTOT / 1000)) + 
-  geom_point() +
-  scale_y_log10(breaks = c(2.5, 5, 10, 20, 40, 80, 160, 320, 640, 1280)) +
-    ylab("Ingreso trimestral (miles de pesos)") + xlim(c(0,50))
+```{r, message = FALSE, warning = FALSE, fig.width = 8, fig.asp = 0.3}
+ggplot(dat_ingreso, 
+       aes(x = personas_ocupadas, y = ingreso_miles, colour= tel_celular)) + 
+  geom_jitter(width=0.5, height = 0.3, size = 1, alpha = 0.5) +
+  scale_y_log10(breaks = c(2.5, 5, 10, 20, 40, 80, 160, 320), 
+                limits = c(2.5, 360)) +
+    ylab("Ingreso trimestral \n (miles de pesos)") +
+  facet_wrap( ~marginación, nrow=1) + 
+  geom_smooth(span = 5, method = "loess", method.args = list(degree=1)) +
+  xlab("Personas ocupadas")
 ```
 
-O el tamaño de la localidad:
-```{r, message = FALSE, warning = FALSE, fig.width=5, fig.asp=0.7}
-ggplot(dat_ingreso, aes(x = tamaño_localidad, y = INGTOT/1000)) + 
-  geom_boxplot() +
-  scale_y_log10(breaks = c(2.5, 5, 10, 20, 40, 80, 160, 320, 640, 1280)) +
-    ylab("Ingreso trimestral (miles de pesos)")
+
+```{r, fig.width = 8, fig.asp = 0.3, message = FALSE, warning = FALSE}
+ggplot(dat_ingreso, 
+       aes(x = num_focos, y = (0.1 + ingreso_miles) / (TOT_RESI - MENORES), colour = tel_celular)) + 
+  geom_jitter(width=0.5, size=1, alpha = 0.5) +
+  scale_y_log10(breaks = c(2.5, 5, 10, 20, 40, 80), limits = c(1.5, 100)) +
+    ylab("Ingreso trimestral por adulto \n (miles de pesos)") +
+  facet_wrap( ~marginación, nrow=1) + 
+  geom_smooth(span = 5, method = "loess", method.args = list(degree=1, family = "symmetric")) +
+  xlab("Número de focos") + xlim(c(0,25))
 ```
 
+Estas variables son relevantes, y vemos que explican una parte considerable
+de la variación de los ingresos de los hogares. Sin embargo,
+¿cómo podemos mejorar nuestras predicciones para el estrato de marginación
+muy alta, donde hay relativamente pocos datos, o para aquellos hogares
+con alto número de personas ocupadas? Claramente, es necesario incluír
+más variables, pero un enfoque ingenuo puede no dar muy buenas predicciones.
 
 
 - En algunas encuestas se pregunta directamente el ingreso mensual del hogar. La
