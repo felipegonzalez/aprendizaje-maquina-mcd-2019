@@ -1,0 +1,6 @@
+book_filename: "aprendizaje-maquina"
+language:
+  ui:
+    chapter_name: "Clase "
+new_session: yes
+delete_merged_file: true
