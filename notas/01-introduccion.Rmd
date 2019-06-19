@@ -232,8 +232,8 @@ grandes para resolver este tipo de problemas.
 
 ## Ejemplo:  mediciones costosas
 
-Consideramos la medición de ingreso total trimestral para una
-muestra de hogares de la encuesta de ENIGH. Cada una de estas mediciones
+Consideramos la medición de ingreso total trimestral para los
+hogares de la encuesta ENIGH. Cada una de estas mediciones
 es muy costosa en tiempo y dinero. Sin embargo, hay otras características
 de los hogares que podemos medir.
 
