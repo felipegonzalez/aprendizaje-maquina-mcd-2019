@@ -1,0 +1,238 @@
+# Regresión lineal {#regresion}
+
+```{r, include = FALSE}
+library(ggplot2)
+theme_set(theme_minimal(base_size = 14))
+cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+```
+
+## Modelos lineales
+
+Consideramos un problema de regresión con entradas $X=(X_1,X_2,\ldots, X_p)$
+y respuesta $Y$. Una de las maneras más simples que podemos intentar
+para predecir $Y$ en función de las $X_j$´s es mediante una suma ponderada
+de los valores de las $X_j's$, usando una función
+
+$$f_\beta (X) = \beta_0 + \beta_1 X_1 + \beta_2 X_2 + \cdots + \beta_p X_p,$$
+Nuestro trabajo será entonces, dada una muestra de entrenamiento ${\mathcal L}$,
+encontrar valores apropiados de las $\beta$'s, para construir un predictor:
+
+$$\hat{f}(X) = \hat{\beta}_0 + \hat{\beta}_1 X_1 + \hat{\beta}_2 X_2 \cdots + \hat{\beta} X_p$$
+y usaremos esta función $\hat{f}$ para hacer predicciones $\hat{Y} =\hat{f}(X)$.
+
+
+
+#### Ejemplos {-}
+
+Queremos predecir las ventas futuras anuales $Y$ de una tienda que se va a construir
+en un lugar dado. Las variables que describen el lugar son
+$X_1 = trafico\_peatones$, $X_2=trafico\_coches$. En una aproximación simple,
+podemos suponer que la tienda va a capturar una fracción de esos tráficos que
+se van a convertir en ventas. Quisieramos predecir con una función de la forma
+$$f_\beta (peatones, coches) = \beta_0 + \beta_1\, peatones + \beta_2\, coches.$$
+Por ejemplo, después de un análisis estimamos que 
+
+- $\hat{\beta}_0 = 1000000$ (ventas base, si observamos tráficos igual a 0: es lo que va a atraer la tienda)
+- $\hat{\beta}_1 = (200)*0.02 = 4$ (capturamos 2\% del tráfico peatonal, y cada capturado gasta 200 pesos)
+- $\hat{\beta}_2 = (300)*0.01 =3$ (capturamos 2\% del tráfico peatonal, y cada capturado gasta 400 pesos)
+Entonces haríamos predicciones con
+$$\hat{f}(peatones, coches) = 1000000 +  4\,peatones + 3\, coches.$$
+El modelo lineal es más flexible de lo que parece en una primera aproximación, porque
+tenemos libertad para construir las variables de entrada a partir de nuestros datos.
+Por ejemplo, si tenemos una tercera variable 
+$estacionamiento$ que vale 1 si hay un estacionamiento cerca o 0 si no lo hay, podríamos
+definir las variables
+- $X_1= peatones$
+- $X_2 = coches$
+- $X_3 = estacionamiento$
+- $X_4 = coches*estacionamiento$
+Donde la idea de agregar $X_4$ es que si hay estacionamiento entonces vamos
+a capturar una fracción adicional del trafico de coches, y la idea de $X_3$ es que 
+la tienda atraerá más nuevas visitas si hay un estacionamiento cerca. Buscamos 
+ahora modelos de la forma
+$$f_\beta(X_1,X_2,X_3,X_4) = \beta_0 + \beta_1X_1 + \beta_2 X_2 + \beta_3 X_3 +\beta_4 X_4$$
+y podríamos obtener después de nuestra análisis las estimaciones
+- $\hat{\beta}_0 = 800000$ (ventas base)
+- $\hat{\beta}_1 = 4$
+- $\hat{\beta}_2 = (300)*0.005 = 1.5$
+- $\hat{\beta}_3 = 400000$ (ingreso adicional si hay estacionamiento por nuevo tráfico)
+- $\hat{\beta}_4 = (300)*0.02 = 6$ (ingreso adicional por tráfico de coches si hay estacionamiento)
+ 
+ y entonces haríamos predicciones con el modelo
+$$\hat{f} (X_1,X_2,X_3,X_4) = 
+800000 + 4\, X_1 + 1.5 \,X_2 + 400000\, X_3 +6\, X_4$$
+
+## Aprendizaje de coeficientes (ajuste)
+En el ejemplo anterior, los coeficientes fueron calculados (o estimados) usando
+experiencia, reglas, argumentos teóricos, o quizá otras fuentes de datos (como estudios
+o encuestas, conteos, etc.) 
+
+Ahora quisiéramos construir un algoritmo para
+aprender estos coeficientes del modelo
+$$f_\beta (X_1) = \beta_0 + \beta_1 X_1 + \cdots \beta_p X_p$$
+a partir de una muestra de entrenamiento de datos históricos de tiendas que hemos
+abierto antes:
+$${\mathcal L}=\{ (x^{(1)},y^{(1)}),(x^{(2)},y^{(2)}), \ldots, (x^{(N)}, y^{(N)}) \}$$
+El criterio de ajuste (algoritmo de aprendizaje) más usual para regresión 
+lineal es el de **mínimos cuadrados**. 
+
+Construimos las predicciones (ajustados) para la muestra de entrenamiento:
+$$\hat{y}^{(i)} =  f_\beta (x^{(i)}) = \beta_0 + \beta_1 x_1^{(i)}+ \cdots + \beta_p x_p^{(i)}$$
+
+Y consideramos las diferencias de los ajustados con los valores observados:
+
+$$e^{(i)} = y^{(i)} - f_\beta (x^{(i)})$$
+
+La idea entonces es minimizar la suma de los residuales al cuadrado, para
+intentar que la función ajustada pase lo más cercana a los puntos de entrenamiento 
+que sea posible. La función de pérdida que utilizamos más frecuentemente
+es la pérdida cuadrática, dada por:
+
+$$L(\beta) = ECM(\beta) = \frac{1}{N}\sum_{i=1}^N (y^{(i)} - f_\beta(x^{(i)}))^2$$
+(ECM es el *error cuadrático medio*).
+
+```{block2, type = 'comentario'}
+**Mínimos cuadrados para regresión lineal**
+Buscamos encontrar:
+$$\hat{\beta} = \mathrm{arg\,min}_{\beta} L(\beta) = \mathrm{arg\,min}_{\beta}\frac{1}{N}\sum_{i=1}^N (y^{(i)} - f_\beta(x^{(i)}))^2$$
+    donde
+ $$f_\beta (x^{(i)}) = \beta_0 + \beta_1 x_1^{(i)}+ \cdots + \beta_p x_p^{(i)}$$
+```
+
+**Observación**:
+Como discutimos al final de las sección anterior, minimizar directamente el error
+ de entrenamiento para encontrar los coeficientes puede resultar en en un modelo
+ sobreajustado/con varianza alta/ruidoso. En la sección anterior discutimos
+ tres grandes estrategias para mitigar este problema (restringir o estructurar la familia
+ de funciones, penalizar la función objetivo o perturbar la muestra de entrenamiento).
+ El método mas común es cambiar la función objetivo, que discutiremos más adelante
+ en la sección de regularización.
+ 
+
+### Ejemplo {-}
+
+Consideramos el problema de predecir el precio de venta de una casa en términos
+de sus características. Para esto usamos datos de [este concurso de Kaggle](https://www.kaggle.com/c/house-prices-advanced-regression-techniques).
+
+```{r, message = FALSE, warning = FALSE}
+library(tidyverse)
+casas <- read_csv("../datos/houseprices/house-prices.csv")
+```
+
+¿Cuáles deberían ser las variables más importantes? Debemos considerar
+al menos, el tamaño de las casas, la calidad de sus terminados y su ubicación.
+Vamos a comenzar con tamaño y calidad. Un modelo que no tiene mucho sentido
+empezar ajustando es
+
+$$Precio = \beta_0 + \beta_1 Calidad + \beta_2 Tamaño,$$
+
+porque esto implicaría que el precio por metro cuadrado de las casas es constante,
+y la calidad de las casas solo aporta una cantidad fija. En lugar de eso, consideramos:
+
+$$Precio = \beta_0 + (\beta_1 + \beta_2 Calidad) Tamaño$$
+Es decir, el precio por metro cuadrado varía con la calidad. Este es un modelo lineal:
+
+$$Precio = \beta_0 + \beta_1 Tamaño + \beta_2 Calidad ^*Tamaño,$$
+
+y este es un modelo lineal, pero necesitamos calcular una variable más (el producto de
+calidad por tamaño). 
+
+En primer lugar, dividimos los datos en al menos dos partes: una parte para entrenar
+el modelo y otra para validarlo (estimar el error de predicción):
+
+```{r}
+# calculamos variables derivadas:
+casas <- mutate(casas, 
+                precio_miles = SalePrice / 1000,
+                habitable_100_m2 = (GrLivArea * 0.092903) / 100,
+                calidad = OverallQual - 5, # una medida entre -5 y 5
+                calidad_m2 = calidad * habitable_100_m2)
+```
+
+Y ahora dividimos muestra de entrenamiento y de validación:
+
+```{r}
+set.seed(13)
+casas_ent <- sample_frac(casas, 0.5)
+casas_val <- anti_join(casas, casas_ent, by = "Id")
+sprintf("Total: %1.f, Entrena: %1.f, Validación: %1.f",  
+        nrow(casas), nrow(casas_ent), nrow(casas_val))
+```
+
+Veamos unos resúmenes de nuestra muestra de entrenamiento:
+```{r}
+casas_ent %>% pull(precio_miles) %>% quantile
+casas_ent %>% pull(habitable_100_m2) %>% quantile %>% round(2)
+casas_ent %>% pull(calidad_m2) %>% quantile %>% round(2)
+casas_ent %>% pull(calidad) %>% quantile
+```
+
+
+```{r}
+graf_ent <- ggplot(casas_ent, 
+       aes(x = habitable_100_m2, y = precio_miles)) + 
+    geom_point(size=1, alpha = 0.5) + facet_wrap(~calidad) 
+graf_ent
+```
+
+Podemos filtrar por un momento para ver con más detalle los patrones:
+
+```{r}
+graf_ent_f <- ggplot(casas_ent %>% filter(calidad > -3, precio_miles < 600), 
+       aes(x = habitable_100_m2, y = precio_miles)) + 
+    geom_point(size=1, alpha = 0.5) + facet_wrap(~calidad) 
+graf_ent_f
+```
+
+
+
+Podemos poner algunos valores tentativos a los coeficientes y evaluar nuestro modelo:
+
+```{r}
+beta <- c(0, 50, 20)
+beta
+```
+
+Que quiere decir que en casas promedio en calidad (5), el precio por metro cuadrado
+es de 50 dólares, y cada subida en calidad sobre 5 aporta 20 dólares adicionales por metro
+cuadrado.
+
+```{r}
+preds_fun <- function(x_ent){
+    function(beta){
+        cbind(1, x_ent) %*% beta
+    }
+}
+x_ent <- casas_ent %>% select(habitable_100_m2, calidad_m2) %>% as.matrix
+y <- casas_ent$precio_miles
+preds <- preds_fun(x_ent)
+y_hat <- preds(beta)
+```
+
+El error cuadrático medio con estos parámetros es
+```{r}
+ecm <- mean((y - y_hat)^2)
+ecm
+```
+
+Y su raíz (que está en unidades de miles de dólares):
+```{r}
+sqrt(ecm)
+```
+
+Como estamos considerando pocas variables, podemos graficar para ver cómo
+se comparan valores ajustadas con observados:
+
+```{r}
+graf_ent_f + 
+    geom_line(data = casas_ent %>% mutate(preds = y_hat) %>% 
+                  filter(calidad > -3, precio_miles < 600),
+              aes(x = habitable_100_m2, y = preds, col = "red"))
+```
+
+
+**Ejercicio**: ¿Cómo mejoramos el ajuste? Tenemos que minimizar el
+error cuadrático medio. Usa estas gráficas para modificar los parámetros y minimizar 
+el error cuadrático medio.
+
+---
