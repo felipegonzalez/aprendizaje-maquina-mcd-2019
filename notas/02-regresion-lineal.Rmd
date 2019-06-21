@@ -570,10 +570,13 @@ al cálculo del gradiente - la contribución es la dirección de descenso de err
 para ese punto particular de entrenamiento. Nos movemos entonces en una dirección
 promedio, para intentar hacer el error total lo más chico posible.
 
+
+### Implementación
+
 En este punto, podemos intentar una implemetación simple para
 hacer descenso en gradiente para nuestro problema de regresión 
 (es un buen ejercicio). En lugar de eso, mostraremos cómo usar librerías ahora
-estándar para hacer esto. En particular usamos tensorflow y keras (con tensorflow), 
+estándar para hacer esto. En particular usamos keras (con tensorflow), 
 que tienen la ventaja:
 
 - En tensorflow y keras no es necesario calcular las derivadas a mano. Utiliza 
@@ -583,10 +586,85 @@ explícita de las derivadas de funciones elementales.
 
 
 
+```{r}
+library(keras)
+
+# definición de estructura del modelo (regresión lineal)
+n_entrena <- nrow(x_ent)
+modelo_casas <- 
+    keras_model_sequential() %>%
+    layer_dense(units = 1,        #una sola respuesta, que depende de todas las variables anteriores
+        activation = "linear",    # linealmente
+        kernel_initializer = initializer_constant(0), #inicializamos coeficientes en 0
+        bias_initializer = initializer_constant(0))   #inicializamos ordenada en 0
+
+# seleccionar cantidad a minimizar, optimizador y métricas
+modelo_casas %>% compile(
+    loss = "mean_squared_error",  # pérdida cuadrática
+    optimizer = optimizer_sgd(lr = 0.05), # descenso en gradiente, sin calcular derivadas!
+    metrics = list("mean_squared_error")
+  )
+
+# iteramos
+# Probamos con un número de iteraciones baja primero  
+historia <- modelo_casas %>% fit(
+  as.matrix(x_ent), # x entradas
+  y_ent,            # y salida o target
+  batch_size = nrow(x_ent), # para descenso en gradient
+  epochs = 20, # número de iteraciones
+  verbose = 0
+)
+
+```
 
 
+```{r}
+plot(historia, metrics = "mean_squared_error", smooth = FALSE)
+```
+
+```{r}
+# Agregamos iteraciones: esta historia comienza en los últimos valores de
+# la corrida anterior
+historia <- modelo_casas %>% fit(
+  as.matrix(x_ent), # x entradas
+  y_ent,            # y salida o target
+  batch_size = nrow(x_ent), # para descenso en gradiente
+  epochs = 1000, # número de iteraciones
+  verbose = 0
+)
+
+```
 
 
+```{r}
+plot(historia, metrics = "mean_squared_error", smooth = FALSE) 
+```
+
+El modelo parece todavía ir mejorando: puede dificil juzgar de esta gráfica.
+Veamos de todas formas los coeficientes estimados hasta ahora:
+
+```{r}
+get_weights(modelo_casas)
+```
+
+ La implementación oficial de R es *lm*, que en general tiene buen desempeño para datos que caben en memoria:
+
+```{r}
+lm(precio_miles ~ habitable_100_m2 + calidad_m2, data = casas_ent) %>% coef
+```
+
+Si lo corremos 500 iteraciones adicionales:
+
+```{r}
+historia <- modelo_casas %>% fit(
+  as.matrix(x_ent), # x entradas
+  y_ent,            # y salida o target
+  batch_size = nrow(x_ent), # para descenso en gradiente
+  epochs = 500, # número de iteraciones
+  verbose = 0
+)
+get_weights(modelo_casas)
+```
 
 
 
