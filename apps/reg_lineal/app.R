@@ -6,9 +6,9 @@
 #
 #    http://shiny.rstudio.com/
 #
-library(DT)
 library(shiny)
 
+# Preparar datos
 casas <- read_csv("../../datos/houseprices/house-prices.csv")
 casas <- mutate(casas, 
                 precio_miles = SalePrice / 1000,
@@ -28,59 +28,56 @@ preds_fun <- function(x_ent){
 x_ent <- casas_ent %>% select(habitable_100_m2, calidad_m2) %>% as.matrix
 y <- casas_ent$precio_miles
 preds <- preds_fun(x_ent)
-# Define UI for application that draws a histogram
+
+
+# Aplicación
 ui <- fluidPage(
 
-    # Application title
     titlePanel("Precios de casas"),
     
-    # Sidebar with a slider input for number of bins 
     sidebarLayout(
         sidebarPanel(
             sliderInput("beta_0",
-                        "b_0",
+                        "b_0 (ordenada)",
                         min =  0,
                         max = 200,
                         value = 30),
             sliderInput("beta_1",
-                        "b_1",
+                        "b_1  (habitable_m2)",
                         min =  -100,
                         max = 100,
                         value = 0),
             sliderInput("beta_2",
-                        "b_0",
+                        "b_2  calidad*habitable_m2",
                         min =  -100,
                         max = 100,
                         value = 0)
         ),
 
-        # Show a plot of the generated distribution
         mainPanel(
+           p("precio_miles = b_0 + b_1 * habitable_100_m2 +  b_2 * calidad * habitable_100_m2 "),
            tableOutput("error"),
            plotOutput("distPlot")
         )
     )
 )
 
-# Define server logic required to draw a histogram
 server <- function(input, output) {
-    output$error <- renderTable({
+    calc_preds <- reactive({
         beta <- c(input$beta_0, input$beta_1, input$beta_2)
         y_hat <- preds(beta)
         ecm <- mean( (y_hat - y)^2)
+        list(y_hat = y_hat, ecm = ecm)
+    })
+    output$error <- renderTable({
         tab <- tibble(Entrenamiento = c("Precio medio","Error cuadrático", "Raíz de error cuadrático"),
-                valor = c(mean(y), ecm, sqrt(ecm)))
+                valor = c(mean(y), ecm, sqrt(calc_preds()$ecm)))
         tab
     })
     output$distPlot <- renderPlot({
-        beta <- c(input$beta_0, input$beta_1, input$beta_2)
-        y_hat <- preds(beta)
-        graf_ent_f + 
-            geom_line(data = casas_ent %>% mutate(preds = y_hat), #%>% 
-                          #filter(calidad > -3, precio_miles < 600),
-                      aes(x = habitable_100_m2, y = preds, col = "red"))
-        
-        
+            graf_ent_f + 
+            geom_point(data = casas_ent %>% mutate(preds = calc_preds()$y_hat), 
+                      aes(x = habitable_100_m2, y = preds, col = "red"), size = 0.5, alpha = 1)
     })
 }
 
