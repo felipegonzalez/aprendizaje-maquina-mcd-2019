@@ -153,7 +153,7 @@ Y ahora dividimos muestra de entrenamiento y de validación:
 
 ```{r}
 set.seed(13)
-casas_ent <- sample_frac(casas, 0.5)
+casas_ent <- sample_frac(casas, 0.7)
 casas_val <- anti_join(casas, casas_ent, by = "Id")
 sprintf("Total: %1.f, Entrena: %1.f, Validación: %1.f",  
         nrow(casas), nrow(casas_ent), nrow(casas_val))
@@ -198,20 +198,20 @@ es de 50 dólares, y cada subida en calidad sobre 5 aporta 20 dólares adicional
 cuadrado.
 
 ```{r}
-preds_fun <- function(x_ent){
-    function(beta){
+preds_fun <- function(beta){
+    function(x_ent){
         cbind(1, x_ent) %*% beta
     }
 }
 x_ent <- casas_ent %>% select(habitable_100_m2, calidad_m2) %>% as.matrix
-y <- casas_ent$precio_miles
-preds <- preds_fun(x_ent)
-y_hat <- preds(beta)
+y_ent <- casas_ent$precio_miles
+predecir <- preds_fun(beta)
+y_hat <- predecir(x_ent)
 ```
 
 El error cuadrático medio con estos parámetros es
 ```{r}
-ecm <- mean((y - y_hat)^2)
+ecm <- mean((y_ent - y_hat)^2)
 ecm
 ```
 
@@ -236,3 +236,36 @@ error cuadrático medio. Usa estas gráficas para modificar los parámetros y mi
 el error cuadrático medio.
 
 ---
+
+Finalmente calculamos el error de validación para el modelo seleccionado, que
+nos da una **medida honesta** del error que esperamos al usar el modelo
+para nuevos casos:
+
+```{r}
+x_val <- casas_val %>% select(habitable_100_m2, calidad_m2) %>% as.matrix
+y_val <- casas_val$precio_miles
+beta <- c(101, 27, 20)
+predecir <- preds_fun(beta)
+y_pred <- predecir(x_val)
+y_hat <- predecir(x_ent)
+sqrt(mean((y_val - y_pred)^2))
+```
+
+- Este último valor es típicamente más alto que el error calculado con la muestra
+de entrenamiento (¿Puedes explicar intuitivamente por qué?). 
+
+Podemos también comparar observados y ajustados para ver cómo se comportan los
+errores:
+
+```{r}
+qplot(y_hat, y_ent, alpha = 0.5) + geom_abline(colour = "red")
+```
+
+
+Y notamos que nos preocupan principalmente casas con predicciones alta, en particular
+un atípico en donde nuestra ajuste falló catastróficamente (¿Cómo crees que podamos
+arreglar este problema?)
+
+
+
+

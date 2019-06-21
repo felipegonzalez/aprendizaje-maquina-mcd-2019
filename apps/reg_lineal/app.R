@@ -16,7 +16,7 @@ casas <- mutate(casas,
                 calidad = OverallQual - 5, # una medida entre -5 y 5
                 calidad_m2 = calidad * habitable_100_m2)
 set.seed(13)
-casas_ent <- sample_frac(casas, 0.5)
+casas_ent <- sample_frac(casas, 0.7)
 graf_ent_f <- ggplot(casas_ent, #%>% filter(calidad > -3, precio_miles < 600), 
                      aes(x = habitable_100_m2, y = precio_miles)) + 
     geom_point(size=1, alpha = 0.5) + facet_wrap(~calidad) 
