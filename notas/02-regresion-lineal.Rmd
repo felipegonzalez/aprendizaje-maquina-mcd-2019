@@ -46,6 +46,7 @@ definir las variables
 - $X_2 = coches$
 - $X_3 = estacionamiento$
 - $X_4 = coches*estacionamiento$
+
 Donde la idea de agregar $X_4$ es que si hay estacionamiento entonces vamos
 a capturar una fracción adicional del trafico de coches, y la idea de $X_3$ es que 
 la tienda atraerá más nuevas visitas si hay un estacionamiento cerca. Buscamos 
@@ -344,7 +345,7 @@ h_deriv <- function(x) 2 * x + 2 * (x - 2) - 2*x/(x^2 + 1)
 Ahora iteramos con $\eta = 0.4$ y valor inicial $z_0=5$
 ```{r}
 z_0 <- 5
-eta <- 0.3
+eta <- 0.4
 descenso <- function(n, z_0, eta, h_deriv){
   z <- matrix(0,n, length(z_0))
   z[1, ] <- z_0
@@ -731,7 +732,7 @@ ggplot(dat_x) +
 ```
 
 Si incrementamos el tamaño de paso observamos también convergencia lenta. En este
-caso particular, subir más el tamaño de paso produce divergencia:
+caso particular, subir más el tamaño de paso puede producir divergencia:
 
 ```{r}
 iteraciones <- descenso(10, c(0, -0.25, -0.75), 0.07, grad_sin_norm)
