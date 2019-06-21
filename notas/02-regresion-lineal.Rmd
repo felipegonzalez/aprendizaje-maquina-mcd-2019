@@ -591,20 +591,22 @@ library(keras)
 
 # definición de estructura del modelo (regresión lineal)
 n_entrena <- nrow(x_ent)
-modelo_casas <- 
-    keras_model_sequential() %>%
-    layer_dense(units = 1,        #una sola respuesta, que depende de todas las variables anteriores
-        activation = "linear",    # linealmente
-        kernel_initializer = initializer_constant(0), #inicializamos coeficientes en 0
-        bias_initializer = initializer_constant(0))   #inicializamos ordenada en 0
+crear_modelo <- function(lr = 0.05){
+    modelo_casas <- 
+        keras_model_sequential() %>%
+        layer_dense(units = 1,        #una sola respuesta, que depende de todas las variables anteriores
+            activation = "linear",    # linealmente
+            kernel_initializer = initializer_constant(0), #inicializamos coeficientes en 0
+            bias_initializer = initializer_constant(0))   #inicializamos ordenada en 0
 
-# seleccionar cantidad a minimizar, optimizador y métricas
-modelo_casas %>% compile(
-    loss = "mean_squared_error",  # pérdida cuadrática
-    optimizer = optimizer_sgd(lr = 0.05), # descenso en gradiente, sin calcular derivadas!
-    metrics = list("mean_squared_error")
-  )
-
+    # seleccionar cantidad a minimizar, optimizador y métricas
+    modelo_casas %>% compile(
+        loss = "mean_squared_error",  # pérdida cuadrática
+        optimizer = optimizer_sgd(lr = lr), # descenso en gradiente, sin calcular derivadas!
+        metrics = list("mean_squared_error"))
+    modelo_casas
+}
+modelo_casas <- crear_modelo()
 # iteramos
 # Probamos con un número de iteraciones baja primero  
 historia <- modelo_casas %>% fit(
@@ -668,3 +670,191 @@ get_weights(modelo_casas)
 
 
 
+
+
+
+
+## Normalización de entradas
+
+La convergencia de descenso en gradiente (y también el desempeño numérico
+para otros algoritmos) puede dificultarse cuando las variables tienen escalas
+muy diferentes. Esto produce curvaturas altas en la función que queremos
+minimizar.
+
+En este ejemplo simple, una variable tiene desviación estándar
+10 y otra 1:
+
+```{r}
+x1 <- rnorm(100, 0, 5) 
+x2 <- rnorm(100, 0, 1) +  0.1*x1
+y <- 0*x1 + 0*x2 + rnorm(100, 0, 0.1) 
+dat <- data_frame(x1, x2,  y)
+rss <- function(beta)  mean((as.matrix(dat[, 1:2]) %*% beta - y)^2) 
+grid_beta <- expand.grid(beta1 = seq(-1, 1, length.out = 50), 
+                         beta2 = seq(-1, 1, length.out = 50))
+rss_1 <- apply(grid_beta, 1, rss) 
+dat_x <- data.frame(grid_beta, rss_1)
+ggplot(dat_x, aes(x = beta1, y = beta2, z = rss_1)) + 
+    geom_contour(binwidth = 0.5) +
+    coord_equal() 
+```
+
+En algunas direcciones el gradiente es muy grande, y en otras chico. 
+Esto implica que la convergencia puede ser muy lenta en algunas direcciones,
+puede diverger en otras, 
+y que hay que ajustar el paso $\eta > 0$ con cuidado, 
+dependiendo de dónde comiencen las iteraciones.
+
+Por ejemplo, con un tamaño de paso relativamente chico, damos unos saltos
+grandes al principio y luego avanzamos muy lentamente:
+
+```{r}
+grad_calc <- function(x_ent, y_ent){
+  # calculamos directamente el gradiente
+  salida_grad <- function(beta){
+    n <- length(y_ent)
+    f_beta <- as.matrix(cbind(1, x_ent)) %*% beta
+    e <- y_ent - f_beta
+    grad_out <- - as.numeric(t(cbind(1, x_ent)) %*% e) / n
+    names(grad_out) <- c('Intercept', colnames(x_ent))
+    grad_out
+  }
+  salida_grad
+}
+grad_sin_norm <- grad_calc(dat[, 1:2, drop = FALSE], dat$y)
+iteraciones <- descenso(10, c(0, -0.25, -0.75), 0.02, grad_sin_norm)
+ggplot(dat_x) + 
+    geom_contour(aes(x = beta1, y = beta2, z = rss_1), binwidth = 0.5) +
+    coord_equal() +
+  geom_path(data = data.frame(iteraciones[, 2:3]), aes(x=X1, y=X2), colour = 'red') +
+  geom_point(data = data.frame(iteraciones[, 2:3]), aes(x=X1, y=X2), colour = 'red')
+```
+
+Si incrementamos el tamaño de paso observamos también convergencia lenta. En este
+caso particular, subir más el tamaño de paso produce divergencia:
+
+```{r}
+iteraciones <- descenso(10, c(0, -0.25, -0.75), 0.07, grad_sin_norm)
+ggplot(dat_x) + 
+    geom_contour(aes(x = beta1, y = beta2, z = rss_1), binwidth = 0.5) +
+    coord_equal() +
+  geom_path(data = data.frame(iteraciones[, 2:3]), aes(x=X1, y=X2), colour = 'red') +
+  geom_point(data = data.frame(iteraciones[, 2:3]), aes(x=X1, y=X2), colour = 'red')
+```
+
+Una normalización usual es con la media y desviación estándar, donde hacemos,
+para cada variable de entrada $j=1,2,\ldots, p$
+$$ x_j^{(i)} = \frac{ x_j^{(i)} - \bar{x}_j}{s_j}$$
+donde
+$$\bar{x}_j = \frac{1}{N} \sum_{i=1}^N x_j^{(i)}$$
+$$s_j = \sqrt{\frac{1}{N-1}\sum_{i=1}^N (x_j^{(i)}- \bar{x}_j )^2}$$
+es decir, centramos y normalizamos por columna. Otra opción común es restar
+el mínimo y dividir entre la diferencia del máximo y el mínimo, de modo
+que las variables resultantes toman valores en $[0,1]$.
+
+
+
+Entonces escalamos antes de ajustar:
+
+```{r}
+x1_s = (x1 - mean(x1))/sd(x1)
+x2_s = (x2 - mean(x2))/sd(x2)
+dat <- data_frame(x1_s, x2_s,  y)
+rss <- function(beta)  mean((as.matrix(dat[, 1:2]) %*% beta - y)^2) 
+grid_beta <- expand.grid(beta1 = seq(-1, 1, length.out = 50), 
+                         beta2 = seq(-1, 1, length.out = 50))
+rss_1 <- apply(grid_beta, 1, rss) 
+dat_x <- data.frame(grid_beta, rss_1)
+ggplot(dat_x, aes(x = beta1, y = beta2, z = rss_1)) + 
+    geom_contour(binwidth = 0.5) +
+    coord_equal() 
+```
+
+Nótese que los coeficientes ajustados serán diferentes a los del caso no
+normalizado. 
+
+Si normalizamos, obtenemos convergencia más rápida
+
+```{r}
+grad_sin_norm <- grad_calc(dat[, 1:2, drop = FALSE], dat$y)
+iteraciones <- descenso(10, c(0, -0.25, -0.75), 0.5, grad_sin_norm)
+ggplot(dat_x) + 
+    geom_contour(aes(x = beta1, y = beta2, z = rss_1), binwidth = 0.5) +
+    coord_equal() +
+  geom_path(data = data.frame(iteraciones[, 2:3]), aes(x=X1, y=X2), colour = 'red') +
+  geom_point(data = data.frame(iteraciones[, 2:3]), aes(x=X1, y=X2), colour = 'red')
+```
+
+
+```{block, type = 'comment'}
+Cuando normalizamos antes de ajustar el modelo, las predicciones deben
+hacerse con entradas normalizadas. La normalización se hace con los mismos
+valores que se usaron en el entrenamiento (y **no** recalculando medias
+y desviaciones estándar con el conjunto de prueba).
+En cuanto a la forma funcional del predictor $f$, el problema
+con entradas normalizadas es equivalente al de las entradas no normalizadas. Asegúrate
+de esto escribiendo cómo correponden los coeficientes de cada modelo normalizado
+con los coeficientes del modelo no normalizado.
+```
+
+Supongamos que el modelo en las variables originales  es
+$${f}_\beta (X) = \beta_0 + \beta_1 X_1 + \beta_2 X_2 + \cdots + \beta_p X_p,$$
+Consideramos el modelo con variables estandarizadas
+$${g}_\beta (X) = \beta_0^s + \beta_1^s Z_1 + \beta_2^s Z_2 + \cdots + \beta_p^s Z_p,$$
+
+Sustituyendo $Z_j = (X_j - \mu_j)/s_j,$ 
+
+$${g}_{\beta^s} (X) = (\beta_0^s - \sum_{j=1}^p \mu_j/s_j) + \frac{\beta_1^s}{s_j} X_1 + \frac{\beta_2^s}{s_2} X_2 + \cdots + \frac{\beta_p^s}{s_p} X_p,$$
+Y vemos que tiene la misma forma funcional de $f_\beta(X)$. Si la solución de mínimos cuadrados es única,
+entonces una vez que ajustemos tenemos que tener $\hat{f}_\beta(X) = \hat{g}_{\beta^s} (X)$,
+lo que implica que
+$$\hat{\beta}_0 = \hat{\beta}_0^s -  \sum_{j=1}^p \mu_j/s_j$$ y
+$$\hat{\beta}_j = \hat{\beta}_j^s/s_j.$$
+
+Nótese que para pasar del problema estandarizado al no estandarizado simplemente
+se requiere escalar los coeficientes por la $s_j$ correspondiente.
+
+#### Ejemplo {-}
+
+Repetimos nuestro modelo 
+
+```{r}
+library(keras)
+# definición de estructura del modelo (regresión lineal)
+n_entrena <- nrow(x_ent)
+x_ent_s <- scale(x_ent)
+
+ajustar_casas <- function(modelo, x, y, n_epochs = 100){
+  ajuste <- modelo %>% fit(
+    as.matrix(x), y,
+    batch_size = nrow(x_ent), # para descenso en gradient
+    epochs = n_epochs, # número de iteraciones
+    verbose = 0) %>% as_tibble()
+  ajuste
+}
+
+modelo_casas_ns <- crear_modelo(0.07)
+modelo_casas_s <- crear_modelo(0.5)
+historia_s <- ajustar_casas(modelo_casas_s, x_ent_s, y_ent) %>% 
+  mutate(tipo = "Estandarizar")
+historia_ns <- ajustar_casas(modelo_casas_ns, x_ent, y_ent) %>% 
+  mutate(tipo = "Sin estandarizar")
+
+historia <- bind_rows(historia_ns, historia_s) %>%  filter(metric == "mean_squared_error")
+
+ggplot(historia, aes(x = epoch, y = value, colour = tipo)) +
+     geom_line() + geom_point() +scale_x_log10() + scale_y_log10()
+```
+
+Observamos que el modelo con datos estandarizados convergió:
+```{r}
+get_weights(modelo_casas_s)
+coef(lm.fit(cbind(1,x_ent_s), y_ent))
+```
+
+Mientras que el modelo no estandarizado todavía requiere iteraciones:
+
+```{r}
+get_weights(modelo_casas_ns)
+coef(lm.fit(cbind(1,x_ent), y_ent))
+```
