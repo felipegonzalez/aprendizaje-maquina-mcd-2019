@@ -245,11 +245,11 @@ dat_ingreso <- read_csv(file = '../datos/enigh-ejemplo.csv') %>%
   #    Medio = "Medio", Bajo = "Medio", `Muy bajo`="Bajo")) %>% 
   mutate(tel_celular = ifelse(SERV_2 == 1, "Sí", "No")) %>% 
   mutate(marginación = fct_reorder(marginación, ingreso_miles, median)) %>% 
-  rename(personas_ocupadas = PEROCU)
+  rename(ocupadas = PEROCU)
 
 sample_n(dat_ingreso, 10) %>% 
-    select(NOM_ENT..307, num_focos, marginación, 
-           tel_celular, personas_ocupadas, ingreso_miles)  %>%
+    select(entidad = NOM_ENT..307, num_focos, marginación, 
+           tel_celular, ocupadas, ingreso_miles)  %>%
     arrange(desc(ingreso_miles)) %>% 
     knitr::kable()
 ```
@@ -267,7 +267,7 @@ hogar (número de personas ocupadas):
 
 ```{r, message = FALSE, warning = FALSE, fig.width = 9, fig.asp = 0.3}
 ggplot(dat_ingreso, 
-       aes(x = personas_ocupadas, y = ingreso_miles, colour= tel_celular)) + 
+       aes(x = ocupadas, y = ingreso_miles, colour= tel_celular)) + 
   geom_jitter(width=0.5, height = 0.3, size = 1, alpha = 0.5) +
   scale_y_log10(breaks = c(2.5, 5, 10, 20, 40, 80, 160, 320), 
                 limits = c(2.5, 360)) +
