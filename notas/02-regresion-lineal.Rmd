@@ -859,3 +859,337 @@ Mientras que el modelo no estandarizado todavía requiere iteraciones:
 get_weights(modelo_casas_ns)
 coef(lm.fit(cbind(1,x_ent), y_ent))
 ```
+
+
+## Interpretación de modelos lineales
+
+Muchas veces se considera que la facilidad de interpretación es una fortaleza
+del modelo lineal. Esto es en parte cierto, pero hay algunas consideraciones
+importantes que debemos tomar en cuenta.
+
+La interpretación más sólida es la de las predicciones: podemos decir
+por qué una predicción es alta o baja considerando las variables individuales.
+
+Vamos a agregar dos variables adicionales a nuestro modelo de precios de casas:
+
+```{r}
+casas_ent <- casas_ent %>% mutate(sotano_10_m2 = (BsmtFinSF1 * 0.092903) / 10 )
+modelo_casas <- lm( precio_miles ~ 1 + habitable_100_m2 + sotano_10_m2 + calidad:habitable_100_m2, data = casas_ent)
+coef(modelo_casas)
+```
+
+
+- El coeficiente de sótano se interpreta así: si en una casa dada, todo los demás constante, se aumenta en 10 m2 el sótano, el precio aumenta en 2.3 mil dólares.
+
+- Todo lo demás constante, el efecto de área habitable depende de la calidad:
+    - Para calidad = 0, un aumento de 100 m2 equivale a un aumento de unos 28 mil dólares en el precio de venta
+    - Si la calidad sube un punto, entonces el incremento por cada 100m2 sube 19 mil dòlares adicionales
+    - Si la calidad decrece en un punto, entonces el incremento por cada 100m2 decrece 19 mil dólares adicionales.
+
+En este ejemplo en particular, interpretar la ordenada no tiene mucho sentido, pues
+es un precio esperado en calidad = 0 y área habitable y de sótano = 0 (que no existe en los datos). Podemos sin embargo centrar las variables:
+
+```{r}
+casas_ent <- casas_ent %>% mutate(sotano_10_m2 = (BsmtFinSF1 * 0.092903) / 10 )
+casas_ent_mod <- casas_ent %>% 
+  mutate(sotano_10_m2_c = sotano_10_m2 - mean(sotano_10_m2),
+         habitable_100_m2_c = habitable_100_m2 - mean(habitable_100_m2))
+modelo_casas <- lm( precio_miles ~ 1 + habitable_100_m2_c + sotano_10_m2_c + calidad:habitable_100_m2, data = casas_ent_mod)
+coef(modelo_casas)
+```
+
+Vemos que todos los coeficientes se quedan igual (misma interpetación), excepto la ordenada. En este caso:
+
+- La predicción de precio para una casa de tamaño promedio, con sótano de tamaño promedio y calidad=0 es de 142 mil dólares.
+
+
+
+Así podemos explicar cada predicción - considerando qué variables aportan positiva y cuáles
+negativamente a la predicción. **El camino más seguro es limitarse a hacer este
+tipo de análisis de las predicciones**. Hablamos de entender la estructura predictiva
+del problema con los datos que tenemos - y no intentamos ir hacia la explicación
+del fenómeno.
+
+Cualquier otra interpretación requiere mucho más cuidados, y requiere
+una revisión de la especificación correcta del modelo. Parte de estos
+cuidados se estudian en un curso de regresión desde el punto de vista
+estadístico, por ejemplo:
+
+- La interpretación coeficiente a coeficiente no toma en cuenta la estructura
+de asociación de las $x's$. Rara vez *cambios marginales* en una variable 
+de entrada ocurren
+de manera independiente de las otras variables de entrada.
+
+- Variación muestral. Es necesario considerar la variación en nuestras estimaciones
+de los coeficientes para poder concluir acerca de su relación con el fenómeno 
+(tratable desde punto de vista estadístico, pero hay que checar supuestos). 
+Quizá el error de estimación del
+coeficiente de lcavol es 2 veces su magnitud - difícilmente podemos concluir 
+algo acerca la relación de lcavol.
+
+- Efectos no lineales: si la estructura del problema es altamente no lineal,
+los coeficientes de un modelo lineal no tienen una interpretación clara en relación 
+al fenómeno. Esto también
+es parcialmente tratable con diagnósticos.
+
+```{r}
+set.seed(2112)
+x <- rnorm(20)
+y <- x^2
+summary(lm(y ~x))
+```
+
+Otros cuidados adicionales se requieren si queremos hacer afirmaciones causales:
+
+- Variables omitidas: si faltan algunas variables cruciales en el fenómeno que nos
+interesa, puede ser muy difícil interpretar el resto de los coeficientes en términos 
+del fenómeno
+
+#### Ejemplo: {-}
+
+- Supongamos que queremos predecir cuánto van a gastar en televisiones samsung ciertas
+personas que llegan a Amazon. Una variable de entrada es el número de
+anuncios de televisiones Samsung que recibieron antes de llegar a Amazon.
+El coeficiente de esta variable es alto (significativo, etc.),
+así que concluimos que el anuncio causa compras de  televisiones Samsung.
+
+¿Qué está mal aquí? El modelo no está mal, sino la interpretación y la conclusión 
+de causalidad. Cuando las
+personas están investigando acerca de televisiones, reciben anuncios. La razón
+es que esta variable nos puede indicar más bien quién está en proceso de compra
+de una televisión samsung (reciben anuncios) y quién no (no hacen búsquedas
+relevantes, así que no reciben anuncios). El modelo está mal especificado porque
+no consideramos que hay otra variable importante, que es el interés de la
+persona en compra de TVs Samsung.
+
+En general, la recomendación es que las interpretaciones causales deben considerarse
+como preliminares (o *sugerencias*), y se requiere más análisis y consideraciones
+antes de poder tener interpretaciones causales sólidas. 
+
+
+
+
+## ¿Por qué el modelo lineal funciona bien (muchas veces)?
+
+Regresión lineal es un método muy simple, 
+y parecería que debería haber métodos más avanzados que lo superen fácilmente.
+
+Para empezar, es poco creíble que el modelo
+$$f(X) = b_0 + b_1X_1 + \cdots b_p X_p$$
+se cumple exactamente para el fenómeno que estamos tratando. Pero regresión lineal muchas veces supera a métodos que intentan
+construir predictores más complejos. 
+Una de las primeras razones es que podemos ver la aproximación lineal como una aproximación de primer orden a la verdadera $f(X)$, y muchas veces eso es suficiente para producir predicciones razonables.
+
+Adicionalmente, otras veces sólo tenemos suficientes datos para hacer una aproximación de primer orden, aún cuando la verdadera
+$f(X)$ no sea lineal, y resulta que esta aproximación da buenos resultados. Esto es particularmente cierto en problemas de dimensión alta, como veremos a continuación.
+
+
+
+### k vecinos más cercanos
+
+Un método popular, con buen desempeño en varios ejemplos, 
+es el de k-vecinos más cercanos, 
+que consiste en hacer aproximaciones locales directas de $f(X)$.
+Sea ${\mathcal L}$  un conjunto de entrenamiento. Para $k$ entera fija, y 
+$x_0$ una entrada donde queremos predecir, definimos a $N_k(x_0)$ como el conjunto de los $k$ elementos
+de ${\mathcal L}$ que tienen $x^{(i)}$ más cercana a $x_0$. Hacemos la predicción
+$$\hat{f}(x_0) = \frac{1}{k}\sum_{x^{(i)} \in N_k(x_0)} y^{(i)}$$
+
+Es decir, promediamos las $k$ $y$'s con $x$'s más cercanas a donde queremos predecir.
+
+
+#### Ejemplo {-}
+
+```{r, message = FALSE}
+auto <- read_csv("../datos/auto.csv")
+datos <- auto[, c('name', 'weight','year', 'mpg')]
+datos <- datos %>% mutate(
+  peso_kg = weight * 0.45359237,
+  rendimiento_kpl = mpg * (1.609344 / 3.78541178))
+nrow(datos)
+```
+
+Vamos a separa en muestra de entrenamiento y de prueba estos datos. Podemos
+hacerlo como sigue (2/3 para entrenamiento aproximadamente en este caso, así
+obtenemos alrededor de 100 casos para prueba):
+
+```{r}
+set.seed(213)
+datos$muestra_unif <- runif(nrow(datos), 0, 1)
+datos_entrena <- filter(datos, muestra_unif > 1/3)
+datos_prueba <- filter(datos, muestra_unif <= 1/3)
+nrow(datos_entrena)
+nrow(datos_prueba)
+```
+
+```{r}
+ggplot(datos_entrena, aes(x = peso_kg, y = rendimiento_kpl)) +
+  geom_point()
+```
+
+Consideremos un modelo de $k=15$ vecinos más cercanos. La función de predicción
+ajustada es entonces:
+
+```{r}
+library(kknn)
+# nótese que no normalizamos entradas - esto también es importante
+# hacer cuando hacemos vecinos más cercanos, pues en otro caso
+# las variables con escalas más grandes dominan el cálculo
+mod_15vmc <- kknn(rendimiento_kpl ~ peso_kg, train = datos_entrena,
+                  test = tibble(peso_kg = seq(700, 2200, by = 10)), 
+                  k=15)
+dat_graf <- tibble(peso_kg = seq(700, 2200, by = 10), 
+                       rendimiento_kpl = predict(mod_15vmc))
+ggplot(datos_entrena, aes(x = peso_kg, y = rendimiento_kpl)) +
+  geom_point(alpha=0.6) + 
+  geom_line(data=dat_graf, col='red', size = 1.2)
+```
+
+Y para $k=5$ vecinos más cercanos:
+
+```{r}
+mod_5vmc <- kknn(rendimiento_kpl ~ peso_kg, train = datos_entrena,
+                  test = tibble(peso_kg=seq(700,2200, by = 10)), 
+                  k = 5)
+dat_graf <- tibble(peso_kg = seq(700,2200, by = 10), 
+                       rendimiento_kpl = predict(mod_5vmc))
+ggplot(datos_entrena, aes(x = peso_kg, y = rendimiento_kpl)) +
+  geom_point(alpha=0.6) + 
+  geom_line(data=dat_graf, col='red', size = 1.2)
+```
+
+En nuestro caso, los errores de prueba son
+
+```{r}
+mod_3vmc <- kknn(rendimiento_kpl ~ peso_kg, train = datos_entrena,
+                  test = datos_prueba, 
+                  k = 3)
+mod_15vmc <- kknn(rendimiento_kpl ~ peso_kg, train = datos_entrena,
+                  test = datos_prueba, 
+                  k = 15)
+(mean((datos_prueba$rendimiento_kpl-predict(mod_3vmc))^2))
+(mean((datos_prueba$rendimiento_kpl-predict(mod_15vmc))^2))
+```
+
+Pregunta: ¿Cómo escogerías una $k$ adecuada para este problema? Recuerda que adecuada significa que se reduzca a mínimo posible
+el error de predicción. Como ejercicio, compara los modelos con
+$k = 2, 25, 200$ utilizando una muestra de prueba. ¿Cuál se desempeña mejor? 
+Da las razones de el mejor o peor desempeño: recuerda que el desempeño en predicción puede sufrir porque la función estimada no es suficiente flexible para capturar patrones importantes, pero también porque parte del ruido se incorpora en la predicción.
+
+Por los ejemplos anteriores, vemos que k-vecinos más cercanos puede considerarse como un aproximador universal, que puede adaptarse a cualquier patrón importante que haya en los datos. Entonces, ¿cuál es la razón de utilizar otros métodos como regresión? ¿Por qué el desempeño de regresión sería superior?
+
+
+#### La maldición de la dimensionalidad {-}
+El método de k-vecinos más cercanos funciona mejor cuando hay muchas $x$ cercanas a $x0$, de forma que el promedio sea estable (muchas $x$), y extrapolemos poco ($x$ cercanas).
+Cuando $k$ es muy chica, nuestras estimaciones son ruidosas, y cuando $k$ es grande y los vecinos están lejos, entonces estamos sesgando la estimación local con datos lejanos a nuestra región de interés.
+
+El problema es que en dimensión alta, casi cualquier conjunto de
+entrenamiento (independientemente del tamaño) sufre fuertemente por uno o ambas dificultades del problema.
+
+
+
+#### Ejemplo {-}
+ Consideremos que la salida Y es determinística $Y = e^{-8\sum_{j=1}^p x_j^2}$.
+Vamos a usar 1-vecino más cercano para hacer predicciones, c
+on una muestra de entrenamiento de 1000 casos.
+Generamos $x^{i}‘s uniformes en $[ 1,1]$, para $p = 2$, y calculamos la respuesta 
+$Y$ para cada caso:
+
+```{r}
+fun_exp <- function(x) exp(-8 * sum(x ^ 2))
+x <- map(1:1000, ~ runif(2, -1, 1))
+dat <- tibble(x = x) %>% 
+        mutate(y = map_dbl(x, fun_exp))
+ggplot(dat %>% mutate(x_1 = map_dbl(x, 1), x_2 = map_dbl(x, 2)), 
+       aes(x = x_1, y = x_2, colour = y)) + geom_point()
+```
+
+La mejor predicción en $x_0 = (0,0)$ es $f((0,0)) = 1$. Eñ vecino más
+cercano al origen es
+```{r}
+dat <- dat %>% mutate(dist_origen = map_dbl(x, ~ sqrt(sum(.x^2)))) %>% 
+  arrange(dist_origen)
+mas_cercano <- dat[1, ]
+mas_cercano; mas_cercano$x[[1]]
+```
+Nuestra predicción es entonces $\hat{f}(0)=$ `r mas_cercano$y`, que
+es bastante cercano al valor verdadero (1).
+
+Ahora intentamos hacer lo mismo para dimensión $p=8$.
+
+
+```{r}
+x <- map(1:1000, ~ runif(8, -1, 1))
+dat <- tibble(x = x) %>% 
+       mutate(y = map_dbl(x, fun_exp))
+dat <- dat %>% mutate(dist_origen = map_dbl(x, ~ sqrt(sum(.x^2)))) %>% 
+  arrange(dist_origen)
+mas_cercano <- dat[1, ]
+mas_cercano; mas_cercano$x[[1]]
+```
+
+Y el resultado es un desastre. Nuestra predicción es
+```{r}
+mas_cercano$y
+```
+Necesitariamos una muestra de alrededor de  un millón de casos
+para obtener resultados no tan malos (pruébalo).
+
+¿Qué es lo que está pasando? La razón es que en dimensiones altas, 
+los puntos de la muestra de entrenamiento están muy lejos 
+unos de otros, y están cerca de la frontera, 
+incluso para tamaños de muestra relativamente grandes como n = 1000.
+Cuando la dimensión crece, la situación empeora exponencialmente.
+
+```{block, type = 'comentario'}
+En dimensiones altas, todos los conjuntos de entrenamiento factibles
+se distribuyen de manera rala en el espacio de entradas.
+```
+
+Ahora intentamos algo similar con una función que es razonable aproximar
+con una función lineal:
+
+```{r}
+fun_cubica <- function(x) 0.5 * (1 + x[1])^3
+```
+
+Y queremos predecir para $x=(0,0,\ldots,0)$, cuyo valor exacto es
+
+```{r}
+fun_cubica(0)
+```
+
+Repetimos el proceso: simulamos las entradas, y aplicamos un vecino más cercano:
+
+```{r}
+set.seed(821)
+x <- map(1:1000,  ~ runif(8, -1, 1))
+dat <- tibble(x = x) %>% mutate(y = map_dbl(x, fun_cubica))
+dat <- dat %>% 
+  mutate(dist_origen = map_dbl(x, ~ sqrt(sum(.x^2)))) %>% 
+  arrange(dist_origen)
+mas_cercano <- dat[1, ]
+mas_cercano; mas_cercano$x[[1]]
+```
+
+Este no es un resultado muy bueno. Sin embargo, regresión se
+desempeña considerablemente mejor:
+
+```{r}
+dat_reg <- cbind(y = dat$y, 
+                 x = matrix(unlist(dat$x), ncol = 8, byrow=T)) %>% 
+  as.data.frame()
+mod_lineal <- lm(y ~., dat = dat_reg)
+origen <- data.frame(matrix(rep(0,40), 1, 40))
+names(origen) <- names(dat_reg)[1:40]
+predict(mod_lineal, newdata = origen)
+```
+
+Donde podemos ver que típicamente la predicción de regresión
+es mucho mejor que la de 1 vecino más cercano. Esto es porque el modelo **explota la estructura aproximadamente lineal del problema** (¿cuál estructura lineal? haz algunas gráficas). Nota: corre este ejemplo varias veces con semilla diferente.
+
+Lo que sucede más específicamente es que en regresión lineal
+utilizamos **todos** los datos para hacer nuestra estimación en cada
+predicción. Si la estructura del problema es aproximadamente lineal, 
+entonces regresión lineal explota la estructura para hacer *pooling*
+de toda la infromación para construir predicción con sesgo y varianza bajas.
