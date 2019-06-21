@@ -152,17 +152,15 @@ angulos <- 1:num_cuadros %>%
 angulos_tbl <- tibble(t = 1:num_cuadros, angulo = angulos)
 ```
 
-
 ```{r, eval = FALSE}
-plots <- map(1:71, 
-  ~ ggplot(angulos_tbl %>% filter( t <= .x),  aes(x = t, y = angulo)) + 
-  geom_line() + geom_point() + xlim(c(1,71)) + ylim(c(70, 360)))
-
+# puedes usar este código para crear un gif animado:
+library(gganimate)
+ggplot(angulos_tbl, aes(x = t, y = angulo)) +
+    geom_line() +
+    transition_reveal(t) +
+    transition_time(0.5)
 ```
 
-```{r chunk-label, eval = FALSE, fig.show='animate', ffmpeg.format='gif', dev='jpeg', interval=0.2}
-walk(plots, print)
-```
 
 
 ![](https://media.giphy.com/media/S4HVNskqDGOADaeOY2/giphy.gif){width=150px}
@@ -267,7 +265,7 @@ considerar variables de entorno (marginación del municipio),
 del hogar (si tienen celular), y de las personas dentro del
 hogar (número de personas ocupadas):
 
-```{r, message = FALSE, warning = FALSE, fig.width = 8, fig.asp = 0.3}
+```{r, message = FALSE, warning = FALSE, fig.width = 9, fig.asp = 0.3}
 ggplot(dat_ingreso, 
        aes(x = personas_ocupadas, y = ingreso_miles, colour= tel_celular)) + 
   geom_jitter(width=0.5, height = 0.3, size = 1, alpha = 0.5) +
@@ -280,7 +278,7 @@ ggplot(dat_ingreso,
 ```
 
 
-```{r, fig.width = 8, fig.asp = 0.3, message = FALSE, warning = FALSE}
+```{r, fig.width = 9, fig.asp = 0.3, message = FALSE, warning = FALSE}
 ggplot(dat_ingreso, 
        aes(x = num_focos, y = (0.1 + ingreso_miles) / (TOT_RESI - MENORES), colour = tel_celular)) + 
   geom_jitter(width=0.5, size=1, alpha = 0.5) +
@@ -295,7 +293,7 @@ Estas variables son relevantes, y vemos que explican una parte considerable
 de la variación de los ingresos de los hogares. Sin embargo,
 ¿cómo podemos mejorar nuestras predicciones para el estrato de marginación
 muy alta, donde hay relativamente pocos datos, o para aquellos hogares
-con alto número de personas ocupadas? Claramente, es necesario incluír
+con alto número de focos? Parece ser necesario incluír
 más variables, pero un enfoque ingenuo puede no dar muy buenas predicciones.
 
 
@@ -339,59 +337,6 @@ de estimación de ingreso es un problema de regresión
 - Problemas de **clasificación**: cuando la salida es una variable categórica. El
 ejemplo de detección de dígitos escritos a manos es un problema de clasificación.
 
-
-#### Ejemplo: predecir el rendimiento de un coche. {-}
-
-Estimar directamente el rendimiento (km por litro de combustible) de un
-coche es costoso: hay que hacer varias pruebas en diversas condiciones, etc.
-¿Podríamos estimar el rendimiento de un coche usando variables más accesibles,
- peso del coche, año de producción, etc.?
-
-
-```{r}
-# los datos auto son del paquete ISLR
-auto <- read_csv("../datos/auto.csv")
-datos <- auto[, c('name', 'weight','year', 'mpg')]
-datos$peso_kg <- datos$weight*0.45359237
-datos$rendimiento_kpl <- datos$mpg*(1.609344/3.78541178)
-set.seed(213)
-datos_muestra <- sample_n(datos, 50)
-datos_muestra %>% select(name, peso_kg, rendimiento_kpl)
-
-```
-
-Y podríamos comenzar graficando rendimiento contra
-peso. Cada
-punto representa un coche distinto. En esta
-gráfica vemos que los valores de rendimiento varían según según
-peso de una manera sistemática: cuanto más grande es el peso,
-más bajo es el rendimiento:
-
-
-```{r, fig.width=5, fig.asp=0.7}
-library(ggplot2)
-ggplot(datos_muestra, 
-  aes(x=peso_kg, y=rendimiento_kpl)) + 
-  geom_point() 
-```
-
-
-Podemos entonces ajustar una curva, que para cada nivel de peso
-da un valor de rendimiento que se 'aleja lo menos posible' de los
-valores de rendimiento cercanos. Por ejemplo: según la curva roja, 
-¿cómo haríamos la predicción para un peso de 1500 kg?
-
-
-```{r, fig.width=5, fig.asp=0.7}
-ggplot(datos_muestra, 
-  aes(x=peso_kg, y=rendimiento_kpl)) + geom_point() + 
-  geom_smooth(se = FALSE, colour='red', size = 1.1, 
-    span = 0.4, method='loess') + 
-  geom_smooth(se =FALSE, colour = "gray", size = 1.1, 
-    span = 2, method = "loess")
-```
-
-
 #### Aprendizaje no supervisado {-}
 
 -  **Aprendizaje no supervisado** En este caso no hay *target*
@@ -402,39 +347,6 @@ Los problemas supervisados tienen un objetivo claro: hacer las mejores
 predicciones posibles bajo ciertas restricciones. Los problemas no supervisados
 tienden a tener objetivos más vagos, y por lo mismo pueden ser más difíciles.
 
-
-#### Ejemplo: tipos de coches en el mercado {-}
-
-Quisieramos encontrar categorías de coches tales que: las categorías son diferentes
-entre sí, y los coches en una misma categoría son similares entre sí.
-Esta agrupación nos permite entender la estructura general de los datos, cómo
-están organizados en términos de similitud de características.
-
-
-En este ejemplo, encontramos un plano de máxima variabilidad donde proyectamos
-los coches, y después formamos grupos de coches similares:
-
-```{r, fig.width=5, fig.asp=0.7}
-autos <- auto %>% select(mpg, displacement, horsepower, acceleration)
-comps_autos <- princomp(autos, cor = TRUE)
-clust <- hclust(dist(comps_autos$scores[,1:2]), method = 'ward.D')
-autos$grupo <- cutree(clust, k = 4)
-autos$Comp.1 <- comps_autos$scores[,1]
-autos$Comp.2 <- comps_autos$scores[,2]
-autos$nombre <- auto$name
-ggplot(autos, aes(x=Comp.1, y=Comp.2, colour=factor(grupo), label=nombre)) +
-  geom_point() 
-```
-
-¿Cómo interpretamos los grupos?
-
-```{r}
-head(filter(autos, grupo==1))
-head(filter(autos, grupo==3))
-head(filter(autos, grupo==2))
-head(filter(autos, grupo==4))
-
-```
 
 
 ## Aprendizaje Supervisado
@@ -455,8 +367,9 @@ que queremos predecir, y $X$ es una entrada que queremos usar para predecir
 $Y$,  
 consideramos que las variables aleatorias $Y$ y $X$ están relacionadas como sigue:
 $$Y=f(X)+\epsilon,$$
-donde $\epsilon$ es una término de error aleatorio que no depende de $X$, y
-que tiene valor esperado $\textrm{E}(\epsilon)=0$.
+donde $\epsilon$ es una término de error aleatorio 
+que tiene valor esperado $\textrm{E}(\epsilon | X)=0$ (su media no depende
+de los valores de las entradas).
 
 
 - $f$ expresa la relación sistemática que hay entre $Y$ y $X$: para cada valor
@@ -465,8 +378,7 @@ es una función complicada de $X$.
 - Pero $X$ **no determina** a $Y$, como en el ejemplo anterior de rendimiento
 de coches.
 Entonces agregamos una error aleatorio $\epsilon$, con media cero (si la media
-no es cero podemos agregar una constante a $f$), que no contiene información
-acerca de $X$ (independiente de $X$).
+no es cero podemos agregar una constante a $f$).
 - $\epsilon$ representa, por ejemplo, el efecto de variables que no hemos
 medido o  procesos aleatorios que determinan la respuesta.
 
@@ -575,6 +487,14 @@ pred_1 <- predict(lineal, newdata = data.frame(x=8))
 pred_1
 ```
 
+```{r, fig.width=5, fig.asp=0.7}
+ggplot(datos, aes(x = x, y = y)) + geom_point() + curva_1 +
+  geom_segment(x = 0, xend = 8, y = pred_1, yend = pred_1, colour = 'salmon') +
+  geom_segment(x = 8, xend = 8, y = 0, yend = pred_1, colour = 'salmon') +
+  annotate('text', x = 0.5, y = pred_1 + 100, label = round(pred_1, 1)) +
+  geom_point( x= 8, y =3200, col='green', size = 4)
+```
+
 Si observamos que para esta observación con $x_0=8$, resulta que 
 el correspondiente ingreso es $y_0=3200$, entonces el error sería
 ```{r}
@@ -618,6 +538,8 @@ el modelo aditivo $Y=f(X)+\epsilon$, el mejor predictor
 de $Y$ es $f(x)= E[Y|X=x]$. Es decir: lo que nos interesa es aproximar
 lo mejor que se pueda la esperanza condicional
 
+---
+
 Ahora tenemos los elementos para definir con precisión el problema
 de aprendizaje supervisado. 
 
@@ -657,6 +579,19 @@ Adicionalmente, definimos otra cantidad de menor interés,
 el **error de entrenamiento**, como 
 
 $$\overline{err} = \frac{1}{N}\sum_{i=1}^N (y^{(i)} - \hat{f}(x^{(i)}))^2.$$
+
+```{block2, type='comentario'}
+En aprendizaje supervisado,
+
+- Usando datos de entrenamiento ${\mathcal L}$, construimos una funcion $\hat{f}$ para predecir
+- Si observamos nuevos valores $x_0$, nuestra predicción es $\hat{y} = \hat{f}(x_0)$.
+- Buscamos que cuando observemos nuevos casos para predecir, nuestro error de predicción
+sea bajo en promedio ($Err$ sea bajo)
+- Usualmente estimamos $Err$ mediante una muestra de prueba o validación ${\mathcal T}$, así
+que buscamos minimizar la estimación $\hat{Err}$
+
+```
+
 
 El punto más importante que discutiremos ahora es el siguiente:
 
