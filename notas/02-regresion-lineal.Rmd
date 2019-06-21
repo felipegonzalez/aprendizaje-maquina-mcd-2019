@@ -129,12 +129,12 @@ $$Precio = \beta_0 + \beta_1 Calidad + \beta_2 Tamaño,$$
 porque esto implicaría que el precio por metro cuadrado de las casas es constante,
 y la calidad de las casas solo aporta una cantidad fija. En lugar de eso, consideramos:
 
-$$Precio = \beta_0 + (\beta_1 + \beta_2 Calidad) Tamaño$$
-Es decir, el precio por metro cuadrado varía con la calidad. Este es un modelo lineal:
+$$Precio = \beta_0 + \left( \beta_1 + \beta_2 Calidad\right) Tamaño$$
+Es decir, el precio por metro cuadrado varía con la calidad. Reescribimos como:
 
 $$Precio = \beta_0 + \beta_1 Tamaño + \beta_2 Calidad ^*Tamaño,$$
 
-y este es un modelo lineal, pero necesitamos calcular una variable más (el producto de
+y *este es un modelo lineal*, pero necesitamos calcular una variable más (el producto de
 calidad por tamaño). 
 
 En primer lugar, dividimos los datos en al menos dos partes: una parte para entrenar
@@ -244,27 +244,348 @@ para nuevos casos:
 ```{r}
 x_val <- casas_val %>% select(habitable_100_m2, calidad_m2) %>% as.matrix
 y_val <- casas_val$precio_miles
-beta <- c(101, 27, 20)
+beta <- c(100, 25, 20)
 predecir <- preds_fun(beta)
 y_pred <- predecir(x_val)
 y_hat <- predecir(x_ent)
-sqrt(mean((y_val - y_pred)^2))
+
+sprintf ("Error entrenamiento: %3.1f, Error validación: %3.1f (miles de dólares)", 
+         sqrt(mean((y_ent  - y_hat)^2)),
+         sqrt(mean((y_val - y_pred)^2)))
 ```
 
-- Este último valor es típicamente más alto que el error calculado con la muestra
-de entrenamiento (¿Puedes explicar intuitivamente por qué?). 
+También podemos escribir como coeficientes de variación:
+
+```{r}
+sprintf ("Error entrenamiento: %3.2f, Error validación: %3.2f (miles de dólares)", 
+         sqrt(mean((y_ent  - y_hat)^2)) / mean(y_ent),
+         sqrt(mean((y_val - y_pred)^2)) / mean(y_val))
+```
+
+- El error de validación típicamente es típicamente es más alto que el error calculado con la muestra de entrenamiento (¿Puedes explicar intuitivamente por qué?). 
 
 Podemos también comparar observados y ajustados para ver cómo se comportan los
 errores:
 
 ```{r}
-qplot(y_hat, y_ent, alpha = 0.5) + geom_abline(colour = "red")
+qplot(y_hat, y_ent, alpha = 0.5) + geom_abline(colour = "red") +
+    scale_y_continuous(breaks = seq(100, 700, by = 100)) +
+    scale_x_continuous(breaks = seq(100, 700, by = 100))
+```
+
+Y notamos que algunas predicciones son considerablemente malas.
+Nos preocupan principalmente casas con predicciones muy altas, en particular
+un atípico en donde nuestra ajuste falló catastróficamente (¿Cómo crees que podamos
+arreglar este problema?).
+
+---
+
+
+## Aprendizaje de parámeteros para regresión lineal
+
+Ahora veremos cómo resolver el problema de minimización para ajustar el modelo
+de regresión lineal con error cuadrático. Hay varias maneras de hacer esto:
+
+- En el enfoque tradicional, se usan soluciones analíticas del problema de minimización
+y técnicas de álgebra lineal (por ejemplo, *lm* en R). Este método es efectivo para problemas chicos y medianos.
+- Es posible utilizar algoritmos de optimización estándar. Hay una variedad grande de ellos,
+algunos muy sofisticados y poderosos.
+- En términos de escalamiento y simplicidad, el método de descenso en gradiente es muy efectivo
+para escalar a datos grandes y modelos emás complejos (por ejemplo redes neuronales). 
+
+Notamos que el problema de minimización para regresión no es particularmente difícil:
+
+- Se puede demostrar que la función objectivo es convexa.
+- Sin embargo, en algunos casos puede ser que la función objetivo tenga regiones muy planas,
+lo cual hace difícil la optimización para la mayoría de los métodos. En la siguiente sección
+veremos por qué puede pasar esto y como mejorar este problema.
+
+
+## Descenso en gradiente para regresión lineal
+
+Aunque el problema de mínimos cuadrados se puede resolver analíticamente, o
+usando un optimizador avanzado de R, proponemos
+un método numérico básico que es efectivo y puede escalarse a problemas grandes
+de manera relativamente simple: **descenso en gradiente**, o descenso máximo.
+
+### Intro a descenso en gradiente {-}
+
+Supongamos que una función $h(x)$ es convexa y tiene un mínimo. La idea
+de descenso en gradiente es comenzar con un candidato inicial $z_0$ y calcular
+la derivada en $z^{(0)}$. Si $h'(z^{(0)})>0$, la función es creciente en $z^{(0)}$ y nos
+movemos ligeramente 
+a la izquierda para obtener un nuevo candidato $z^{(1)}$. si $h'(z^{(0)})<0$, la
+función es decreciente en $z^{(0)}$ y nos
+movemos ligeramente a la derecha  para obtener un nuevo candidato $z^{(1)}$. Iteramos este
+proceso hasta que la derivada es cercana a cero (estamos cerca del óptimo).
+
+Si $\eta>0$ es una cantidad chica, podemos escribir
+
+$$z^{(1)} = z^{(0)} - \eta \,h'(z^{(0)}).$$
+
+Nótese que cuando la derivada tiene magnitud alta, el movimiento de $z^{(0)}$ a $z^{(1)}$
+es más grande, y siempre nos movemos una fracción de la derivada. En general hacemos
+$$z^{(j+1)} = z^{(j)} - \eta\,h'(z^{(j)})$$
+para obtener una sucesión $z^{(0)},z^{(1)},\ldots$. Esperamos a que $z^{(j)}$ converja
+para terminar la iteración.
+
+#### Ejemplo {-}
+
+Si tenemos
+```{r}
+h <- function(x) x^2 + (x - 2)^2 - log(x^2 + 1)
+```
+
+Calculamos (a mano):
+```{r}
+h_deriv <- function(x) 2 * x + 2 * (x - 2) - 2*x/(x^2 + 1)
+```
+
+Ahora iteramos con $\eta = 0.4$ y valor inicial $z_0=5$
+```{r}
+z_0 <- 5
+eta <- 0.3
+descenso <- function(n, z_0, eta, h_deriv){
+  z <- matrix(0,n, length(z_0))
+  z[1, ] <- z_0
+  for(i in 1:(n-1)){
+    z[i+1, ] <- z[i, ] - eta * h_deriv(z[i, ])
+  }
+  z
+}
+z <- descenso(20, z_0, eta, h_deriv)
+z
+```
+
+Y vemos que estamos cerca de la convergencia. Podemos graficar:
+
+```{r}
+dat_iteraciones <- tibble(iteracion = 1:nrow(z), 
+                              x = z[, 1], y = h(z[, 1]))
+```
+
+```{r, fig.width = 4, fig.asp = 0.7, out.width="400px"}
+library(gganimate)
+curva <- ggplot(tibble(x = seq(-4, 5, 0.1)), aes(x = x)) + stat_function(fun = h) +
+     xlim(c(-4, 5))
+descenso_g <- curva +
+    geom_point(data = dat_iteraciones, aes(x = x, y = y), col = "red", size = 3) +
+    transition_time(iteracion) + 
+    theme_minimal(base_size = 20)
+animate(descenso_g)
 ```
 
 
-Y notamos que nos preocupan principalmente casas con predicciones alta, en particular
-un atípico en donde nuestra ajuste falló catastróficamente (¿Cómo crees que podamos
-arreglar este problema?)
+
+#### Selección de tamaño de paso $\eta$ {-}
+
+Buscamos un $\eta$ apropiado para cada problema:
+
+- Si hacemos $\eta$ muy chico, el algoritmo puede tardar mucho en
+converger.
+- Si hacemos $\eta$ demasiado grande, el algoritmo puede divergir.
+
+```{r}
+z_eta_chico <- descenso(20, 5, 0.01, h_deriv)
+z_eta_grande <- descenso(20, 1.8, 0.6, h_deriv)
+dat_chico <- tibble(iteracion = 1:nrow(z), x = z_eta_chico[, 1], y = h(z_eta_chico[, 1]), tipo = "η = 0.01")
+dat_grande <- tibble(iteracion = 1:nrow(z), x = z_eta_grande[, 1], y = h(z_eta_grande[, 1]), tipo = "η = 0.6")
+dat_iteraciones$tipo <- "η = 0.03"
+dat <- bind_rows(dat_chico, dat_grande, dat_iteraciones)
+```
+
+```{r, message = FALSE, warning = FALSE}
+library(gganimate)
+curva <- ggplot(tibble(x = seq(-4, 5, 0.1)), aes(x = x)) + stat_function(fun = h, colour = "gray") +
+     xlim(c(-4, 5))
+descenso_3 <- curva +
+    geom_point(data = dat, aes(x = x, y = y), col = "red", size = 3) +
+    facet_wrap(~tipo, nrow = 1) + ylim(c(0, 50)) +
+    transition_time(iteracion) +
+    labs(title = "Iteración {frame_time}") + 
+    theme_minimal(base_size = 20)
+animate(descenso_3, width = 1000, height = 300)
+```
+
+
+```{block2, type='comentario'}
+Es necesario ajustar el tamaño de paso para cada problema particular. Si la 
+convergencia es muy lenta, podemos incrementarlo. Si las iteraciones divergen,
+podemos disminuirlo
+```
+
+#### Funciones de varias variables {-}
+Si ahora $h(z)$ es una función de $p$ variables, podemos intentar
+la misma idea usando el gradiente, que está definido por:
+
+$$\nabla h(z) = \left( \frac{\partial h}{\partial z_1}, \frac{\partial h}{\partial z_2}, \ldots,    \frac{\partial h}{\partial z_p} \right)^t,$$
+es decir, es el vector columna con las derivadas parciales de $h$.
+
+Por cálculo sabemos que el gradiente
+apunta en la dirección de máximo crecimiento local, asi que el paso de iteración,
+dado un valor inicial $z_0$ y un tamaño de paso
+$\eta >0$ es
+
+$$z^{(i+1)} = z^{(i)} - \eta \nabla h(z^{(i)})$$
+
+Las mismas consideraciones acerca del tamaño de paso $\eta$ aplican en
+el problema multivariado.
+
+```{r, fig.width=5, fig.asp=0.7}
+h <- function(z) {
+  z[1]^2 + z[2]^2 - z[1] * z[2]
+}
+h_gr <- function(z_1,z_2) apply(cbind(z_1, z_2), 1, h)
+grid_graf <- expand.grid(z_1 = seq(-3, 3, 0.1), z_2 = seq(-3, 3, 0.1))
+grid_graf <- grid_graf %>%  mutate( val = apply(cbind(z_1,z_2), 1, h))
+gr_contour <- ggplot(grid_graf, aes(x = z_1, y = z_2, z = val)) + 
+  geom_contour(binwidth = 1.5, aes(colour = ..level..))
+gr_contour
+```
+
+El gradiente está dado por (calculado a mano):
+
+```{r}
+h_grad <- function(z){
+  c(2*z[1] - z[2], 2*z[2] - z[1])
+}
+```
+
+Podemos graficar la dirección de máximo descenso para diversos puntos. Estas
+direcciones son ortogonales a la curva de nivel que pasa por cada uno de los
+puntos:
+
+```{r, fig.width=5, fig.asp=0.7}
+grad_1 <- h_grad(c(0,-2))
+grad_2 <- h_grad(c(1,1))
+eta <- 0.2
+gr_contour +
+  geom_segment(aes(x = 0.0, xend = 0.0 - eta * grad_1[1], y = -2, yend = -2 - eta * grad_1[2]),
+    arrow = arrow(length = unit(0.2, "cm"))) + 
+  geom_segment(aes(x = 1, xend = 1 - eta * grad_2[1], y = 1, yend = 1 - eta*grad_2[2]),
+    arrow = arrow(length = unit(0.2, "cm"))) + coord_fixed(ratio = 1)
+```
+
+Y aplicamos descenso en gradiente:
+
+
+```{r, fig.width=5, fig.height= 3.5}
+inicial <- c(3, 1)
+iteraciones <- descenso(150, inicial , 0.1, h_grad)
+df_iteraciones <- data.frame(iteraciones) %>%
+    mutate(iteracion = 1:nrow(iteraciones))
+
+graf_descenso_2 <- ggplot(data = df_iteraciones %>% filter(iteracion < 20)) + 
+  geom_contour(data = grid_graf, 
+               binwidth = 1.5, aes(x = z_1, y = z_2, z = val, colour = ..level..)) + 
+  geom_point(aes(x=X1, y=X2), colour = 'red', size = 3)
+
+if(FALSE){
+    library(gganimate)
+    graf_descenso_2 + 
+        labs(title = 'Iteración: {frame_time}') +
+        transition_time(iteracion)
+    anim_save(filename = "figuras/descenso_2.gif")
+}
+```
+
+![](figuras/descenso_2.gif){width=400px}
+
+
+En este caso, para checar convergencia podemos monitorear el valor de la
+función objetivo:
+
+```{r}
+df_iteraciones <- df_iteraciones %>% 
+    mutate(h_valor = map2_dbl(X1, X2, ~ h(z  = c(.x,.y)))) # h no está vectorizada
+ggplot(df_iteraciones, aes(x = iteracion, y = h_valor)) + geom_point(size=1) +
+    geom_line()
+```
+Y nuestra aproximación al mínimo es:
+
+```{r}
+df_iteraciones %>% tail(1)
+```
+
+### Cálculo del gradiente
+
+Vamos a escribir ahora el algoritmo de descenso en gradiente para regresión lineal.
+Igual que en los ejemplos anteriores, tenemos que precalcular el gradiente. Una
+vez que esto esté terminado, escribir la iteración es fácil.
+
+Recordamos que queremos minimizar (dividiendo entre dos para simplificar más adelante)
+$$L(\beta) = \frac{1}{2}\sum_{i=1}^N (y^{(i)} - f_\beta(x^{(i)}))^2$$
+
+La derivada de la suma es la suma de las derivadas, así nos concentramos
+en derivar uno de los términos
+
+$$  u^{(i)}=\frac{1}{2}(y^{(i)} - f_\beta(x^{(i)}))^2 $$
+Usamos la regla de la cadena para obtener
+$$ \frac{1}{2}\frac{\partial}{\partial \beta_j} (y^{(i)} - f_\beta(x^{(i)}))^2 =
+-(y^{(i)} - f_\beta(x^{(i)})) \frac{\partial f_\beta(x^{(i)})}{\partial \beta_j}$$
+
+Ahora recordamos que
+$$f_{\beta} (x) = \beta_0 + \beta_1 x_1 + \beta_2 x_2 + \cdots + \beta_p x_p$$
+
+Y vemos que tenemos dos casos. Si $j=0$,
+
+$$\frac{\partial f_\beta(x^{(i)})}{\partial \beta_0} = 1$$
+y  si $j=1,2,\ldots, p$ entonces
+
+$$\frac{\partial f_\beta(x^{(i)})}{\partial \beta_j} = x_j^{(i)}$$
+
+Entonces, si ponemos $u^{(i)}=\frac{1}{2}(y^{(i)} - f_\beta(x^{(i)}))^2$:
+
+
+$$\frac{\partial u^{(i)}}{\partial \beta_0} = -(y^{(i)} - f_\beta(x^{(i)}))$$
+y 
+
+$$\frac{\partial u^{(i)}}{\partial \beta_j} = - x_j^{(i)}(y^{(i)} - f_\beta(x^{(i)}))$$
+
+
+Y sumando todos los términos (uno para cada caso de entrenamiento):
+
+
+```{block2, type='comentario'}
+**Gradiente para regresión lineal**
+
+Sea $e^{(i)} =  y_{(i)} - f_{\beta} (x^{(i)})$. Entonces
+
+\begin{equation}
+  \frac{\partial L(\beta)}{\partial \beta_0} = - \frac{1}{N}\sum_{i=1}^N e^{(i)} 
+  (\#eq:grad1)
+\end{equation}
+
+
+\begin{equation}
+  \frac{\partial L(\beta)}{\partial \beta_j} = - \frac{1}{N}\sum_{i=1}^N x_j^{(i)}e^{(i)} 
+  (\#eq:grad2)
+\end{equation}
+para $j=1,2,\ldots, p$. 
+
+```
+
+Nótese que cada punto de entrenamiento contribuye
+al cálculo del gradiente - la contribución es la dirección de descenso de error
+para ese punto particular de entrenamiento. Nos movemos entonces en una dirección
+promedio, para intentar hacer el error total lo más chico posible.
+
+En este punto, podemos intentar una implemetación simple para
+hacer descenso en gradiente para nuestro problema de regresión 
+(es un buen ejercicio). En lugar de eso, mostraremos cómo usar librerías ahora
+estándar para hacer esto. En particular usamos tensorflow y keras (con tensorflow), 
+que tienen la ventaja:
+
+- En tensorflow y keras no es necesario calcular las derivadas a mano. Utiliza 
+[diferenciación automática](https://en.wikipedia.org/wiki/Automatic_differentiation), que no
+es diferenciación numérica ni simbólica: se basa en la regla de la cadena y la codificación
+explícita de las derivadas de funciones elementales.
+
+
+
+
+
+
 
 
 
