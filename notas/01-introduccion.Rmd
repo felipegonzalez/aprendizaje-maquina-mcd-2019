@@ -417,7 +417,7 @@ dat_g <- data.frame(x = x_g, y = y_g)
 set.seed(281)
 error <- rnorm(length(x), 0, 500)
 y <- f(x) + error
-datos <- data_frame(x = x, y = y)
+datos <- tibble(x = x, y = y)
 datos$y_media <- f(datos$x)
 ggplot(datos, aes(x = x, y = y)) + geom_point() +
   geom_line(data=dat_g, colour = 'blue', size = 1.1) +
@@ -635,7 +635,7 @@ Calculamos los errores de entrenamiento de cada curva:
 mod_rojo <- loess(y ~ x, data = datos_entrena, span=0.3)
 mod_gris <- loess(y ~ x, data = datos_entrena, span=1)
 mod_recta <- lm(y ~ x, data = datos_entrena)
-df_mods <- data_frame(nombre = c('recta', 'rojo','gris'))
+df_mods <- tibble(nombre = c('recta', 'rojo','gris'))
 df_mods$modelo <- list(mod_recta, mod_rojo, mod_gris)
 ```
 
@@ -663,7 +663,7 @@ set.seed(218052272)
 x_0 <- sample(0:13, 100, replace = T)
 error <- rnorm(length(x_0), 0, 500)
 y_0 <- f(x_0) + error
-datos_prueba <- data_frame(x = x_0, y = y_0)
+datos_prueba <- tibble(x = x_0, y = y_0)
 datos_prueba
 ```
 
