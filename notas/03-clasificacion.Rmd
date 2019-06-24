@@ -53,20 +53,20 @@ nos da cierta información probabilística acerca de las clases que pueden ocurr
 (depende de otras variables que no conocemos).
 En analogía con el problema de regresión, quisiéramos estimar las probabilidades condicionales $P(G|X)$, que es la parte sistemática de la relación de $G$ en función de $X$.
 Normalmente codificamos las clases $g$ con una etiqueta numérica, de modo
-que $G\in\{1,2,\ldots, K\}$:
+que $G\in\{0,1,\ldots, K\}$:
 
 #### Ejemplo {-}
 (Impago de tarjetas de crédito) 
-Supongamos que $X=$ porcentaje del crédito máximo usado, y $G\in\{1, 2\}$, donde
-$1$ corresponde al corriente y $2$ representa impago. Podríamos tener, por ejemplo:
+Supongamos que $X=$ porcentaje del crédito máximo usado, y $G\in\{0, 1\}$, donde
+$1$ corresponde al corriente y $0$ representa impago. Podríamos tener, por ejemplo:
 \begin{align*} 
 p_1(10\%) &= P(G=1|X=10\%) = 0.95 \\
-p_2(10\%) &= P(G=2|X=10\%) =  0.05
+p_0(10\%) &= P(G=0|X=10\%) =  0.05
 \end{align*}
 y 
 \begin{align*} 
 p_1(95\%) &= P(G=1|X=95\%) = 0.70 \\
-p_2(95\%) &= P(G=2|X=95\%) =  0.30
+p_0(95\%) &= P(G=0|X=95\%) =  0.30
 \end{align*}
 En resumen:
 ```{block2, type='comentario'}
@@ -88,7 +88,7 @@ forma más simple es usando el clasificador de Bayes:
 
 
 ```{block2, type = 'comentario'}
-Dadas las probabilidades condicionales $p_1(x),p_2(x),\ldots, p_K(x)$, el 
+Dadas las probabilidades condicionales $p_0(x),p_1(x),p_2(x),\ldots, p_K(x)$, el 
 **clasificador de Bayes** asociado está dado por
 $$G (x) = \arg\max_{g} p_g(x)$$
 Es decir, clasificamos en la clase que tiene máxima probabilidad de ocurrir.
@@ -101,7 +101,7 @@ Es decir, clasificamos en la clase que tiene máxima probabilidad de ocurrir.
 #### Ejemplo {-}
 (Impago de tarjetas de crédito) 
 Supongamos que $X=$ porcentaje del crédito máximo usado, y $G\in\{1, 2\}$, donde
-$1$ corresponde al corriente y $2$ representa impago.
+$1$ corresponde al corriente y $0$ representa impago.
  Las probabilidades condicionales de clase para la clase *al corriente* podrían
  ser, por ejemplo:
 
@@ -117,15 +117,16 @@ a las no condicionadas, por ejempo, podríamos tener que a total $P(G=1)=0.83$.
 p_1 <- function(x){
   ifelse(x < 15, 0.95, 0.95 - 0.007 * (x - 15))
 }
-ggplot(tibble(x = 0:100), aes(x = x)) + stat_function(fun = p_1) 
+ggplot(tibble(x = 0:100), aes(x = x)) + stat_function(fun = p_1)  +
+    ylab("p_1")
 ```
 
-¿Por qué en este ejemplo ya no mostramos la función $p_2(x)$? 
+¿Por qué en este ejemplo ya no mostramos la función $p_0(x)$? 
 
 Si usamos el clasificador de Bayes, tendríamos por ejemplo que
-si $X=10\%$, como $p_1(10\%) = 0.95$ y $p_2(10\%)=0.05$, nuestra predicción
+si $X=10\%$, como $p_1(10\%) = 0.95$ y $p_0(10\%)=0.05$, nuestra predicción
 de clase sería $G(10\%) = 1$ (al corriente), pero si $X=70\%$,
-$G(70\%) = 1$ (impago), pues $p_1(70\%) = 0.57$ y $p_2(70\%) = 0.43$.
+$G(70\%) = 1$ (impago), pues $p_1(70\%) = 0.57$ y $p_0(70\%) = 0.43$.
 
 
 
@@ -153,7 +154,7 @@ simular_impago <- function(n = 500){
     # las probabilidades de estar al corriente:
     probs <- p_1(x)
     # finalmente, simulamos cuáles clientes siguen en al corriente y cuales no:
-    g <- ifelse(rbinom(length(x), 1, probs) == 1 ,1, 2)
+    g <- ifelse(rbinom(length(x), 1, probs) == 1 ,1, 0)
     dat_ent <- tibble(x = x, p_1 = probs, g = factor(g))
     dat_ent
 }
@@ -167,7 +168,7 @@ variación artificial para evitar traslape de los puntos):
 
 ```{r, fig.width = 5, fig.asp = 0.7}
 graf_1 <- ggplot(dat_ent, aes(x = x)) +
-  geom_jitter(aes(colour = factor(g), y = as.numeric(g=='1')), width=0.5, height=0.05)
+  geom_jitter(aes(colour = factor(g), y = as.numeric(g=='1')), width=0.5, height=0.05) + ylab("") + labs(colour = "Clase")
 graf_1 
 ```
 
@@ -221,7 +222,7 @@ más cercanos (curva roja):
 graf_data <- data_frame(x = seq(0,100, 1))
 vmc <- kknn(g ~ x, train = dat_ent,  k = 60,
               test = graf_data)
-graf_data$p_1 <- vmc$prob[ ,1]
+graf_data$p_1 <- vmc$prob[ ,2]
 graf_verdadero <- tibble(x = 0:100, p_1 = p_1(x))
 graf_1 + 
   geom_line(data = graf_data, aes(y = p_1), colour = 'red', size=1.2) +
@@ -521,4 +522,94 @@ si quisiéramos ofrecer las 3 clases más probables en clasificación de imágen
 misma tasa de correctos, preferimos aquellos modelos que lo hacen con probabilidades
 que discriminan más (más altas cuando está en lo correcto y más bajas cuando 
 se equivoca).
+
+
+## Regresión logística
+
+En $k$ vecinos más cercanos, intentamos estimar directamente con promedios
+las probabilidades de clase, sin considerar ninguna estructura. Ahora
+consideramos modelos más estructurados, definidos por parámetros, e intentaremos
+ajustarlos minimizando devianza. 
+
+Igual que en regresión lineal, algunos de los modelos
+más simples que podemos imaginar son modelos lineales. Solo es necesario
+hacer una adaptación. 
+
+Supongamos que nuestra variable respuesta es $Y$, que toma valores 0 o 1.
+
+Ahora queremos definir $p(x) = p_1(x)$ (probabilidad de que ocurra la clase 1)
+en términos de un promedio ponderado de
+las variables de entrada, como en regresión lineal:
+
+$$\beta_0 + \beta_1 x_1 + \beta_2 x_2 + \cdots + \beta_px_p.$$
+
+Sin embargo, observamos que esta expresión puede
+dar valores negativos o mayores a uno, de forma que no necesariamente
+puede interpetarse como una probabilidad $p(x)$. Una de las formas más sencillas
+de resolver este problema es transformar esta expresión para que necesariamente
+esté en $[0,1]$ por medio de una función fija $h$:
+
+$$p_{\beta}(x) = h(\beta_0 + \beta_1 x_1 + \beta_2 x_2 + \cdots + \beta_px_p),$$
+donde $h$ debe ser una función que mapea valores reales a valores en $[0,1]$. 
+
+En este punto hay muchas funciones que podríamos usar. Para simplificar la interpretación y uso de este modelo, podemos escoger entre funciones que satisfagan, por ejemplo
+
+1. $h$ toma valores en $[0,1]$ es creciente y diferenciable
+2. $h(0) = 0.5$ (0 equivale a probabilidad 0.5, negativos dan probabilidades menores a 0.5 y positivos dan probabilidades mayores a 0.5)
+3. $h(-x)=1-h(x)$ (simetría). Por ejemplo, si $h(-2)=0.16$ entonces $h(2)= 1-0.16=0.84$. 
+
+Hay todavía muchas opciones. Una de las más simples es usar la función
+logística
+
+```{block2, type='comentario'}
+La función logística está dada por
+$$h(x)=\frac{e^x}{1+e^x}$$
+``` 
+
+```{r, fig.width = 4, fig.asp =0.5}
+h <- function(x){exp(x)/(1+exp(x)) }
+ggplot(data_frame(x = seq(-6, 6, 0.01)), aes(x = x)) + stat_function(fun = h)
+```
+
+
+Esta función comprime adecuadamente (para nuestros propósitos) 
+el rango de todos los reales dentro del intervalo $[0,1]$. Si aplicamos
+al predictor lineal que consideramos, obtenemos:
+
+
+```{block2, type='comentario'}
+El **modelo de regresión logística**  está dado por
+$$p_1(x)=p_1(x;\beta)= h(\beta_0+\beta_1x_1 + \beta_2 x_2\cdots \beta_p x_p)$$
+    
+y $$p_0(x)=p_0(x;\beta)=1-p_1(x;\beta),$$
+donde $\beta=(\beta_0,\beta_1, \beta_2, \cdots, \beta_p)$.
+```
+
+### Ejemplo {-}
+
+Consideremos nuestro ejemplo de impago. Podemos examinar qué tipo
+de probilidades obtendríamos con regresión logística.
+
+```{r}
+crear_p <- function(beta_0, beta_1){
+    function(x){
+        h(beta_0 + beta_1 * x)
+    }
+}
+df_grid <- tibble(x = seq(0, 100, 0.1))
+betas <- tibble(beta_0 = c(0.5, -2.5, 3.5),
+                beta_1 = c(-0.1, 0.2, -0.05))
+
+betas <- betas %>% 
+    mutate(p = map2(beta_0, beta_1, crear_p)) %>% 
+    mutate(grid = map(p, ~ df_grid %>% mutate(p_1 = .(x)))) %>% 
+    select(-p) %>% 
+    mutate(fun_nom = paste(beta_0, "+", beta_1, "x")) %>% 
+    unnest
+graf_1 + stat_function(aes(fun = p, label = fun_nom)) + facet_wrap(~fun_nom) 
+
+
+```
+
+
 
