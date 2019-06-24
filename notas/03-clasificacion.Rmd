@@ -606,9 +606,8 @@ betas <- betas %>%
     select(-p) %>% 
     mutate(fun_nom = paste(beta_0, "+", beta_1, "x")) %>% 
     unnest
-graf_1 + stat_function(aes(fun = p, label = fun_nom)) + facet_wrap(~fun_nom) 
 
-
+graf_1 + geom_line(data = betas, aes(x = x, y = p_1)) + facet_wrap(~fun_nom) 
 ```
 
 
