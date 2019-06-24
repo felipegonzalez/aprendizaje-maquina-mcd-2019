@@ -105,8 +105,8 @@ $1$ corresponde al corriente y $0$ representa impago.
  Las probabilidades condicionales de clase para la clase *al corriente* podrían
  ser, por ejemplo:
 
-- $p_1(x) = P(G=1|X = x) =0.95$  si $x < 15\%$
-- $p_1(x) = P(G=1|X = x) = 0.95 - 0.007(x-15)$ si $x>=15\%$
+- $p_1(x) = P(G=1|X = x) =0.95$  si $x < 0.15\%$
+- $p_1(x) = P(G=1|X = x) = 0.95 - 0.7(x - 0.15)$ si $x>=0.15$
   
 Estas son probabilidades, pues hay otras variables que influyen en que un cliente
 permanezca al corriente o no en sus pagos más allá de información contenida en el
@@ -115,9 +115,9 @@ a las no condicionadas, por ejempo, podríamos tener que a total $P(G=1)=0.83$.
 
 ```{r, fig.width = 5, fig.asp = 0.7 }
 p_1 <- function(x){
-  ifelse(x < 15, 0.95, 0.95 - 0.007 * (x - 15))
+  ifelse(x < 0.15, 0.95, 0.95 - 0.7 * (x - 0.15))
 }
-ggplot(tibble(x = 0:100), aes(x = x)) + stat_function(fun = p_1)  +
+ggplot(tibble(x = seq(0, 1, 0.01)), aes(x = x)) + stat_function(fun = p_1)  +
     ylab("p_1")
 ```
 
@@ -150,7 +150,7 @@ library(kknn) # para hacer vecinos más cercanos
 simular_impago <- function(n = 500){
     # suponemos que los valores de x están concentrados en valores bajos,
     # quizá la manera en que los créditos son otorgados
-    x <- pmin(rexp(n, 1 / 40), 100)
+    x <- pmin(rexp(n, 100 / 40), 1)
     # las probabilidades de estar al corriente:
     probs <- p_1(x)
     # finalmente, simulamos cuáles clientes siguen en al corriente y cuales no:
@@ -168,7 +168,8 @@ variación artificial para evitar traslape de los puntos):
 
 ```{r, fig.width = 5, fig.asp = 0.7}
 graf_1 <- ggplot(dat_ent, aes(x = x)) +
-  geom_jitter(aes(colour = factor(g), y = as.numeric(g=='1')), width=0.5, height=0.05) + ylab("") + labs(colour = "Clase")
+  geom_jitter(aes(colour = factor(g), y = as.numeric(g=='1')), 
+    width=0.02, height=0.05) + ylab("") + labs(colour = "Clase")
 graf_1 
 ```
 
@@ -219,11 +220,11 @@ más cercanos (curva roja):
 
 
 ```{r,fig.width = 5, fig.asp = 0.7}
-graf_data <- data_frame(x = seq(0,100, 1))
+graf_data <- data_frame(x = seq(0, 1, 0.01))
 vmc <- kknn(g ~ x, train = dat_ent,  k = 60,
               test = graf_data)
 graf_data$p_1 <- vmc$prob[ ,2]
-graf_verdadero <- tibble(x = 0:100, p_1 = p_1(x))
+graf_verdadero <- tibble(x = seq(0, 1, 0.01), p_1 = p_1(x))
 graf_1 + 
   geom_line(data = graf_data, aes(y = p_1), colour = 'red', size=1.2) +
   geom_line(data = graf_verdadero, aes(y = p_1)) +
@@ -273,7 +274,7 @@ Usamos $20$ vecinos más cercanos para estimar $p_g(x)$:
 
 
 ```{r, fig.width=5, fig.asp=0.7}
-graf_data <- data_frame(bmi = seq(20,45, 1))
+graf_data <- data_frame(bmi = seq(20, 45, 1))
 vmc_5 <- kknn(type ~ bmi, train = diabetes_ent,  k = 20,
               test = graf_data, kernel = 'rectangular')
 graf_data$Yes <- vmc_5$prob[ ,"Yes"]
@@ -387,8 +388,8 @@ s <- function(x) -2*log(x)
 vmc_entrena <- kknn(g ~ x, train = dat_ent,  k = 60,
               test = dat_ent, kernel = 'rectangular')
 dat_dev <- dat_ent %>% select(x,g)
-dat_dev$hat_p_1 <- predict(vmc_entrena, type ='prob')[,1]
-dat_dev$hat_p_2 <- predict(vmc_entrena, type ='prob')[,2]
+dat_dev$hat_p_1 <- predict(vmc_entrena, type ='prob')[ ,2]
+dat_dev$hat_p_2 <- predict(vmc_entrena, type ='prob')[ ,1]
 dat_dev <- dat_dev %>% mutate(hat_p_g = ifelse(g==1, hat_p_1, hat_p_2))
 ```
 
@@ -417,8 +418,8 @@ dat_prueba <- simular_impago(n = 1000) %>% select(x, g)
 vmc_prueba <- kknn(g ~ x, train = dat_ent,  k = 60,
               test = dat_prueba, kernel = 'rectangular')
 dat_dev_prueba <- dat_prueba %>% select(x,g)
-dat_dev_prueba$hat_p_1 <- predict(vmc_prueba, type ='prob')[,1]
-dat_dev_prueba$hat_p_2 <- predict(vmc_prueba, type ='prob')[,2]
+dat_dev_prueba$hat_p_1 <- predict(vmc_prueba, type ='prob')[,2]
+dat_dev_prueba$hat_p_2 <- predict(vmc_prueba, type ='prob')[,1]
 dat_dev_prueba <- dat_dev_prueba %>% mutate(hat_p_g = ifelse(g==1, hat_p_1, hat_p_2))
 dat_dev_prueba <- dat_dev_prueba %>% mutate(dev = s(hat_p_g))
 dat_dev_prueba %>% ungroup %>% summarise(dev_prueba = mean(dev))
@@ -590,15 +591,15 @@ donde $\beta=(\beta_0,\beta_1, \beta_2, \cdots, \beta_p)$.
 Consideremos nuestro ejemplo de impago. Podemos examinar qué tipo
 de probilidades obtendríamos con regresión logística.
 
-```{r}
+```{r, fig.width = 8, fig.asp = 0.5}
 crear_p <- function(beta_0, beta_1){
     function(x){
         h(beta_0 + beta_1 * x)
     }
 }
-df_grid <- tibble(x = seq(0, 100, 0.1))
-betas <- tibble(beta_0 = c(0.5, -2.5, 3.5),
-                beta_1 = c(-0.1, 0.2, -0.05))
+df_grid <- tibble(x = seq(0, 1, 0.01))
+betas <- tibble(beta_0 = c(-5, -0.5, 2.5),
+                beta_1 = c(10,   -2, -4))
 
 betas <- betas %>% 
     mutate(p = map2(beta_0, beta_1, crear_p)) %>% 
