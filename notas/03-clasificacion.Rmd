@@ -336,25 +336,17 @@ $$
 - 2\log(\hat{p}_g(x))
 $$
 
-Su valor esperado (según el proceso que genera los datos) es nuestra medición
-del desempeño del modelo $\hat{p}_g (x)$, es decir, el error de predicción es:
+donde $\hat{p}(x)$ es la probabilidad estimada de nuestro modelo.
 
-$$-2E\left [ \log(\hat{p}_G(X)) \right ],$$
-
-que podemos estimar con una muestra de prueba.
 
 **Observaciones**:
 
 - Ojo: el nombre de devianza se utiliza
-de manera diferente en distintos lugares (pero para cosas similares). 
+de manera diferente en distintos lugares (pero para cosas similares). En muchos lugares se define con el factor de 2, pero podemos incluirlo o no.
 
-- Usamos el factor 2 por razones históricas (la medida de devianza
-definida en estadística tiene un 2, para usar más fácilmente en 
-pruebas de hipótesis relacionadas con comparaciones de modelos). Para nuestros
-propósitos, podemos usar o no el 2.
+- Una razón importante para usar la devianza como el objetivo a minimizar es que resulta en una estimación de máxima verosimilitud para los parámetros (condicional a las x's), como veremos más adelante.
 
-- No es fácil interpretar la devianza, pero es útil para comparar modelos. Veremos
-otras medidas más fáciles de intrepretar más adelante.
+- No es fácil interpretar la devianza, pero es útil para comparar modelos. Veremos otras medidas más fáciles de intrepretar más adelante.
 
 
 Compara la siguiente definición con la que vimos para modelos de regresión:
