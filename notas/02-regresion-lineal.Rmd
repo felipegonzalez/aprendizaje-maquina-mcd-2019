@@ -867,8 +867,19 @@ Muchas veces se considera que la facilidad de interpretación es una fortaleza
 del modelo lineal. Esto es en parte cierto, pero hay algunas consideraciones
 importantes que debemos tomar en cuenta.
 
-La interpretación más sólida es la de las predicciones: podemos decir
-por qué una predicción es alta o baja considerando las variables individuales.
+En primer lugar, podemos separar la interpretación en dos modalidades:
+
+1. Entender cómo calcula nuestro modelo las predicciones.
+2. Entender aspectos del fenóomeno de interés a través de nuestro modelo.
+
+Las interpretaciones del tipo 1 son en general simples para modelos lineales,
+y se tratan de ejercicios descriptivos de la estructura del modelo. Para modelos más complicados es necesario usar herramientas más complejas.
+
+Sin embargo, las interpretaciones de tipo 2 están llenas de dificultades,
+incluso si utilizamos modelos lineales.
+
+
+#### Ejemplo {-}
 
 Vamos a agregar dos variables adicionales a nuestro modelo de precios de casas:
 
@@ -879,12 +890,12 @@ coef(modelo_casas)
 ```
 
 
-- El coeficiente de sótano se interpreta así: si en una casa dada, todo los demás constante, se aumenta en 10 m2 el sótano, el precio aumenta en 2.3 mil dólares.
+- El coeficiente de sótano se interpreta así: si en una casa dada, todo los demás constante, se aumenta en 10 m2 el sótano, la predicción de precio aumenta en 2.3 mil dólares.
 
 - Todo lo demás constante, el efecto de área habitable depende de la calidad:
-    - Para calidad = 0, un aumento de 100 m2 equivale a un aumento de unos 28 mil dólares en el precio de venta
-    - Si la calidad sube un punto, entonces el incremento por cada 100m2 sube 19 mil dòlares adicionales
-    - Si la calidad decrece en un punto, entonces el incremento por cada 100m2 decrece 19 mil dólares adicionales.
+    - Para calidad = 0, un aumento de 100 m2 equivale a un aumento de unos 28 mil dólares en la predicción precio de venta
+    - Si la calidad sube un punto, entonces el incremento por cada 100m2 sube 19 mil dòlares adicionales la predicción
+    - Si la calidad decrece en un punto, entonces el incremento por cada 100m2 decrece 19 mil dólares adicionales en la predicción
 
 En este ejemplo en particular, interpretar la ordenada no tiene mucho sentido, pues
 es un precio esperado en calidad = 0 y área habitable y de sótano = 0 (que no existe en los datos). Podemos sin embargo centrar las variables:
@@ -901,7 +912,6 @@ coef(modelo_casas)
 Vemos que todos los coeficientes se quedan igual (misma interpetación), excepto la ordenada. En este caso:
 
 - La predicción de precio para una casa de tamaño promedio, con sótano de tamaño promedio y calidad=0 es de 142 mil dólares.
-
 
 
 Así podemos explicar cada predicción - considerando qué variables aportan positiva y cuáles
@@ -921,31 +931,63 @@ de entrada ocurren
 de manera independiente de las otras variables de entrada.
 
 - Variación muestral. Es necesario considerar la variación en nuestras estimaciones
-de los coeficientes para poder concluir acerca de su relación con el fenómeno 
-(tratable desde punto de vista estadístico, pero hay que checar supuestos). 
-Quizá el error de estimación del
-coeficiente de lcavol es 2 veces su magnitud - difícilmente podemos concluir 
-algo acerca la relación de lcavol.
+de los coeficientes para poder concluir acerca de su relación con el fenómeno (tratable desde punto de vista estadístico, pero hay que checar supuestos). 
 
 - Efectos no lineales: si la estructura del problema es altamente no lineal,
 los coeficientes de un modelo lineal no tienen una interpretación clara en relación 
-al fenómeno. Esto también
-es parcialmente tratable con diagnósticos.
+al fenómeno. 
+
+#### Ejemplo: ¿todo lo demás constante? {-}
+
+Consideramos un ejemplo donde el ruido es bajo y la relación
+lineal entre $y$ y sus covariables es casi determinística:
 
 ```{r}
-set.seed(2112)
-x <- rnorm(20)
-y <- x^2
-summary(lm(y ~x))
+respuesta <- function(x_1, x_2){
+    1 + 2*x_1 + 2*x_2 +  10 * exp(-(x_1/0.2)^2 -((x_2 +1)/0.2)^2)
+}
+df <- tibble(x_1 = seq(-2, 2, 0.005)) %>% 
+    mutate(x_2 = abs(x_1) - 2 + rnorm(length(x_1), 0, 0.1), 
+        y = respuesta(x_1, x_2) + rnorm(length(x_1), 0, 0.01))
+summary(lm(y ~ x_1 + x_2, data = df) )
+```
+Claramente reperamos los coeficientes reales con este ejemplo.
+
+Ahora supongamos que hacemos la pregunta: ¿Cómo cambia la predicción
+cuando el valor de $x_1$ aumenta en una unidad? Por el coeficiente,
+sabemos que es 2 unidades. Sin embargo, esto no tiene nada qué
+ver con lo que pasaría si manipuláramos individualmente esa
+variable para aumentarla en una unidad:
+
+Cuando hacemos el cambio propuesto (excepto por uno muy pequeño),
+rápidamente pasamos a una zona donde no hay datos, y nuestra
+estimación acaba siendo una extrapolación no soportada por los 
+datos.
+
+```{r}
+respuesta(-1 + 1, -1) - respuesta(-1,-1)
 ```
 
-Otros cuidados adicionales se requieren si queremos hacer afirmaciones causales:
+```{r, fig.width=4, fig.asp=0.7}
+df_punto <- tibble(x_1 = c(-1, -0.0), x_2 = c(-1, -1))
+ggplot(df, aes(x_1, x_2)) + geom_point() +
+    geom_point(data = df_punto, col = "red", size = 3) +
+    geom_segment(data = tibble(x=-1, y=-1, xend = -0.0, yend=-1),
+                 aes(x=x,y=y,xend=xend,yend=yend), colour = 'red')
+```
+
+Esta extrapolación es fácil de descubrir en este ejemplo, pero es
+mucho más difícil de detectar en dimensión alta (muchas variables
+de entrada).
+
+
+Otros cuidados adicionales, aún más sutiles e importantes, se requieren si queremos hacer afirmaciones causales:
 
 - Variables omitidas: si faltan algunas variables cruciales en el fenómeno que nos
 interesa, puede ser muy difícil interpretar el resto de los coeficientes en términos 
-del fenómeno
+del fenómeno.
 
-#### Ejemplo: {-}
+#### Ejemplo: ¿interpretación causal? {-}
 
 - Supongamos que queremos predecir cuánto van a gastar en televisiones samsung ciertas
 personas que llegan a Amazon. Una variable de entrada es el número de
@@ -953,14 +995,14 @@ anuncios de televisiones Samsung que recibieron antes de llegar a Amazon.
 El coeficiente de esta variable es alto (significativo, etc.),
 así que concluimos que el anuncio causa compras de  televisiones Samsung.
 
-¿Qué está mal aquí? El modelo no está mal, sino la interpretación y la conclusión 
-de causalidad. Cuando las
+¿Qué está mal aquí? Cuando las
 personas están investigando acerca de televisiones, reciben anuncios. La razón
 es que esta variable nos puede indicar más bien quién está en proceso de compra
 de una televisión samsung (reciben anuncios) y quién no (no hacen búsquedas
 relevantes, así que no reciben anuncios). El modelo está mal especificado porque
 no consideramos que hay otra variable importante, que es el interés de la
-persona en compra de TVs Samsung.
+persona en compra de TVs Samsung. Sin embargo, ningún diagnóstico del
+modelo nos puede decir de esta especificación incorrecta.
 
 En general, la recomendación es que las interpretaciones causales deben considerarse
 como preliminares (o *sugerencias*), y se requiere más análisis y consideraciones
@@ -972,7 +1014,7 @@ antes de poder tener interpretaciones causales sólidas.
 ## ¿Por qué el modelo lineal funciona bien (muchas veces)?
 
 Regresión lineal es un método muy simple, 
-y parecería que debería haber métodos más avanzados que lo superen fácilmente.
+y parecería que debería haber métodos más avanzados que lo superen fácilmente en la predicción.
 
 Para empezar, es poco creíble que el modelo
 $$f(X) = b_0 + b_1X_1 + \cdots b_p X_p$$

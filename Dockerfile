@@ -52,6 +52,7 @@ RUN install2.r --error \
     imager \
     gridExtra \
     ranger \
+    pdp \
     irlba \
     ggrepel \
     tsne \
