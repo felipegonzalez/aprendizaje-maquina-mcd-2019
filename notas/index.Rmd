@@ -22,8 +22,9 @@ description: "Notas y material para el curso de aprendizaje de máquina (ITAM, 2
 - Problemas de clasificación y regresión logística
 - Validación cruzada y métodos de remuestreo
 - Regularización y selección de modelos
+- Ingeniería de variables de entrada
+- Diagnóstico y mejora en problemas de aprendizaje supervisado
 - Redes neuronales
-- Diagnóstico y mejora en problemas de aprendizaje supervisado.
 - Árboles y bosques aleatorios
 - Componentes principales y análisis de conglomerados
 
@@ -32,6 +33,12 @@ description: "Notas y material para el curso de aprendizaje de máquina (ITAM, 2
 - Tareas semanales (25%)
 - Examen parcial (30% práctico, 20% teórico)
 - Un examen final (25% práctico)
+
+### Material {-}
+
+Cada semestre las notas cambian, en algunas partes considerablemente. Las
+de este semestre están en [este repositorio](https://github.com/felipegonzalez/aprendizaje-maquina-mcd-2019),
+incluyendo ejemplos, ejercicios y tareas.
 
 ### Referencias principales {-}
 
@@ -45,6 +52,11 @@ description: "Notas y material para el curso de aprendizaje de máquina (ITAM, 2
 - [The Elements of Statistical Learning](https://web.stanford.edu/~hastie/ElemStatLearn/), @ESL
 
 ### Software: R y Rstudio {-}
+
+Para hacer las tareas y exámenes pueden usar cualquier lenguaje o flujo de trabajo
+que les convenga (R o Python, por ejemplo) - el único requisito esté basado en código y no
+point-and-click. En lo posible utilizamos librerías especializadas
+que se pueden utilizar desde varias plataformas (keras, por ejemplo).
 
 - [R](https://cran.r-project.org) Sitio de R (CRAN)
 - [Rstudio](https://www.rstudio.com/products/RStudio/) Interfaz gráfica para trabajar en R.
