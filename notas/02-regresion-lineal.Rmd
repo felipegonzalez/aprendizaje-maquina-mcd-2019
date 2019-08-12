@@ -365,7 +365,7 @@ dat_iteraciones <- tibble(iteracion = 1:nrow(z),
                               x = z[, 1], y = h(z[, 1]))
 ```
 
-```{r, fig.width = 4, fig.asp = 0.7, out.width="400px"}
+```{r, fig.width = 4, fig.asp = 0.7, out.width="400px", message=FALSE, warning = FALSE}
 library(gganimate)
 curva <- ggplot(tibble(x = seq(-4, 5, 0.1)), aes(x = x)) + stat_function(fun = h) +
      xlim(c(-4, 5))
@@ -496,7 +496,7 @@ if(FALSE){
 En este caso, para checar convergencia podemos monitorear el valor de la
 función objetivo:
 
-```{r}
+```{r, fig.width=5, fig.height= 3.5}
 df_iteraciones <- df_iteraciones %>% 
     mutate(h_valor = map2_dbl(X1, X2, ~ h(z  = c(.x,.y)))) # h no está vectorizada
 ggplot(df_iteraciones, aes(x = iteracion, y = h_valor)) + geom_point(size=1) +
