@@ -5,6 +5,7 @@ Notas y material para el curso de Aprendizaje de Máquina
 - [Notas](https://trusting-payne-50ed4b.netlify.com). Estas notas son producidas
 en un contenedor de [Docker](https://www.docker.com/products/docker-desktop) (con imagen base de [rocker *verse*](https://www.rocker-project.org), y unos
 8G de memoria) construido con el Dockerfile del repositorio. Para trabajar en este contenedor.
+- [Canal de Slack](https://join.slack.com/t/aprendizajeitam2019/shared_invite/enQtNzIyNzEyNTEyNTAwLWZkZDRmYmFhZjJhZWJhYmI2MTQ3NWIyN2E3ODhlMjhhNTZmNjE0MmY4NTJhM2EzZGQxMjMxYTNmYjVkYjM0ZmM)
 
 ### Trabajando con el contenedor
 
