@@ -160,8 +160,7 @@ angulos_tbl <- tibble(t = 1:num_cuadros, angulo = angulos)
 library(gganimate)
 ggplot(angulos_tbl, aes(x = t, y = angulo)) +
     geom_line() +
-    transition_reveal(t) +
-    transition_time(0.5)
+    transition_reveal(t) 
 ```
 
 
