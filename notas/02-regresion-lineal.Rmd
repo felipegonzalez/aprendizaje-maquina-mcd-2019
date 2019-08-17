@@ -183,9 +183,9 @@ casas_ent %>% pull(calidad) %>% quantile
 
 
 ```{r}
-graf_ent <- ggplot(casas_ent, 
-       aes(x = calidad, y = precio_m2_miles)) + 
-    geom_point(size=1, alpha = 0.5) + facet_wrap(~tiene_piso_2) 
+graf_ent <- ggplot(casas_ent, aes(x = calidad, y = precio_m2_miles)) + 
+    geom_jitter(size=1, alpha = 0.5, width = 0.3, height = 0) + 
+    facet_wrap(~tiene_piso_2) 
 graf_ent
 ```
 
@@ -193,12 +193,10 @@ Podemos poner algunos valores tentativos a los coeficientes y evaluar nuestro mo
 
 ```{r}
 beta <- c(1, 0.2, 0.5)
+names(beta) <- c("beta_0", "beta_1", "beta_2")
 beta
 ```
 
-Que quiere decir que en casas promedio en calidad (5), el precio por metro cuadrado
-es de 50 dólares, y cada subida en calidad sobre 5 aporta 20 dólares adicionales por metro
-cuadrado.
 
 ```{r}
 preds_fun <- function(beta){
@@ -227,9 +225,8 @@ Como estamos considerando pocas variables, podemos graficar para ver cómo
 se comparan valores ajustadas con observados:
 
 ```{r}
-graf_ent + 
-    geom_line(data = casas_ent %>% mutate(preds = y_hat), 
-              aes(x = calidad, y = preds, col = "red"))
+graf_ent + geom_line(data = casas_ent %>% mutate(preds = y_hat), 
+    aes(x = calidad, y = preds, col = "red"))
 ```
 
 
@@ -264,14 +261,16 @@ sprintf ("Error entrenamiento: %3.2f, Error validación: %3.2f (%%)",
          sqrt(mean((y_val - y_pred)^2)) / mean(y_val))
 ```
 
-
-Podemos también comparar observados y ajustados para ver cómo se comportan los
+En este caso ambos errores son muy similares, aunque típicamente el error de validación
+tiende a ser más alto que el de entrenamiento. Podemos también comparar observados y 
+ajustados para ver cómo se comportan los
 errores:
 
 ```{r}
-qplot(y_hat, y_ent, alpha = 0.5) + geom_abline(colour = "red") +
-    scale_y_continuous(breaks = seq(100, 700, by = 100)) +
-    scale_x_continuous(breaks = seq(100, 700, by = 100))
+pred_obs <- tibble(y_hat = y_hat, y_ent = y_ent)
+ggplot(pred_obs, aes(x = y_hat, y = y_ent, alpha = 0.5)) +
+    geom_point() +
+    geom_abline(colour = "red")
 ```
 
 Y notamos que algunas predicciones son considerablemente malas ¿Cómo crees que podamos
@@ -286,11 +285,13 @@ Ahora veremos cómo resolver el problema de minimización para ajustar el modelo
 de regresión lineal con error cuadrático. Hay varias maneras de hacer esto:
 
 - En el enfoque tradicional, se usan soluciones analíticas del problema de minimización
-y técnicas de álgebra lineal (por ejemplo, *lm* en R). Este método es efectivo para problemas chicos y medianos.
+y técnicas de álgebra lineal (por ejemplo, *lm* en R). Este método es efectivo para problemas chicos y medianos. Estas técnicas se escalan en parte a problemas grandes, pero no es muy simple hacerlo.
 - Es posible utilizar algoritmos de optimización estándar. Hay una variedad grande de ellos,
-algunos muy sofisticados y poderosos.
-- En términos de escalamiento y simplicidad, el método de descenso en gradiente es muy efectivo
-para escalar a datos grandes y modelos emás complejos (por ejemplo redes neuronales). 
+algunos muy sofisticados y poderosos, pero en muchos problemas grandes no necesariamente
+escalan apropiadamente.
+- En términos de escalamiento y simplicidad, el método de descenso en gradiente y sus
+variantes es muy efectivo
+para escalar a datos grandes y modelos más complejos (por ejemplo redes neuronales). 
 
 Notamos que el problema de minimización para regresión no es particularmente difícil:
 
@@ -593,25 +594,24 @@ n_entrena <- nrow(x_ent)
 crear_modelo <- function(lr = 0.05){
     modelo_casas <- 
         keras_model_sequential() %>%
-        layer_dense(units = 1,        #una sola respuesta, que depende de todas las variables anteriores
-            activation = "linear",    # linealmente
+        layer_dense(units = 1,        #una sola respuesta,
+            activation = "linear",    # combinar variables linealmente
             kernel_initializer = initializer_constant(0), #inicializamos coeficientes en 0
             bias_initializer = initializer_constant(0))   #inicializamos ordenada en 0
-
-    # seleccionar cantidad a minimizar, optimizador y métricas
+    # compilar seleccionanfo cantidad a minimizar, optimizador y métricas
     modelo_casas %>% compile(
         loss = "mean_squared_error",  # pérdida cuadrática
-        optimizer = optimizer_sgd(lr = lr), # descenso en gradiente, sin calcular derivadas!
+        optimizer = optimizer_sgd(lr = lr), # descenso en gradiente
         metrics = list("mean_squared_error"))
     modelo_casas
 }
 modelo_casas <- crear_modelo()
-# iteramos
-# Probamos con un número de iteraciones baja primero  
+# Ahora iteramos
+# Primero probamos con un número bajo de iteraciones
 historia <- modelo_casas %>% fit(
   as.matrix(x_ent), # x entradas
   y_ent,            # y salida o target
-  batch_size = nrow(x_ent), # para descenso en gradient
+  batch_size = nrow(x_ent), # para descenso en gradiente
   epochs = 20, # número de iteraciones
   verbose = 0
 )
@@ -619,7 +619,7 @@ historia <- modelo_casas %>% fit(
 ```
 
 
-```{r}
+```{r, fig.width =5, fig.height = 3.5}
 plot(historia, metrics = "mean_squared_error", smooth = FALSE)
 ```
 
@@ -637,7 +637,7 @@ historia <- modelo_casas %>% fit(
 ```
 
 
-```{r}
+```{r, fig.width =5, fig.height = 3.5}
 plot(historia, metrics = "mean_squared_error", smooth = FALSE) 
 ```
 
