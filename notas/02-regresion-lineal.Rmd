@@ -132,11 +132,11 @@ porque esto implicaría que el precio por metro cuadrado de las casas es constan
 y la calidad de las casas solo aporta una cantidad fija a su precio total. Una estrategia
 que podemos considerar es el modelo:
 
-$$Precio =  \left( \beta_0 + \beta_1 Calidad\right + \beta_2 Pisos) \, Tamaño$$
+$$Precio =  \left( \beta_0 + \beta_1 \,Calidad + \beta_2 \,Pisos\right) \, Tamaño$$
 Es decir, el precio por metro cuadrado varía con la calidad y el número de pisos. Podemos modelar
 entonces, en lugar del Precio, 
 
-$$Precio_{m^2} = \beta_0 + \beta_1 Calidad + \beta_2 Pisos,$$
+$$Precio_{m^2} = \beta_0 + \beta_1 \, Calidad + \beta_2 \, Pisos,$$
 
 y *este es un modelo lineal*. Para hacer predicciones del *Precio*, después multiplicamos
 la predicción del precio por metros cuadrados por *Tamaño*. 
