@@ -70,8 +70,8 @@ server <- function(input, output) {
         list(y_hat = y_hat, ecm = ecm)
     })
     output$error <- renderTable({
-        tab <- tibble(Entrenamiento = c("Precio medio","Error cuadrático", "Raíz de error cuadrático"),
-                valor = c(mean(y), ecm, sqrt(calc_preds()$ecm)))
+        tab <- tibble(Entrenamiento = c("Error cuadrático", "Raíz de error cuadrático"),
+                valor = c( ecm, sqrt(calc_preds()$ecm)))
         tab
     })
     output$distPlot <- renderPlot({
