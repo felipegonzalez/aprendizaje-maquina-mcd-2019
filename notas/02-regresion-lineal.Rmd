@@ -883,35 +883,20 @@ incluso si utilizamos modelos lineales**.
 Consideramos otro modelo para estudiar su estructura:
 
 ```{r}
-casas_ent <- casas_ent %>% mutate(sotano_10_m2 = (BsmtFinSF1 * 0.092903) / 10 )
-modelo_casas <- lm( precio_miles ~ 1 + habitable_100_m2 + sotano_10_m2 + calidad:habitable_100_m2, data = casas_ent)
+casas_ent <- casas_ent %>% mutate(habitable_100_m2_c = (habitable_m2 - mean(habitable_m2))/100)
+modelo_casas <- lm( precio_m2_miles ~ 1 + calidad + tiene_piso_2 + habitable_100_m2_c, data = casas_ent)
 coef(modelo_casas)
 ```
 
-
-- El coeficiente de sótano se interpreta así: si en una casa dada, todo los demás constante, se aumenta en 10 m2 el sótano, la predicción de precio aumenta en 2.3 mil dólares.
-
-- Todo lo demás constante, el efecto de área habitable depende de la calidad:
-    - Para calidad = 0, un aumento de 100 m2 equivale a un aumento de unos 28 mil dólares en la predicción precio de venta
-    - Si la calidad sube un punto, entonces el incremento por cada 100m2 sube 19 mil dòlares adicionales la predicción
-    - Si la calidad decrece en un punto, entonces el incremento por cada 100m2 decrece 19 mil dólares adicionales en la predicción
-
-En este ejemplo en particular, interpretar la ordenada no tiene mucho sentido, pues
-es un precio esperado en calidad = 0 y área habitable y de sótano = 0 (que no existe en los datos). Podemos sin embargo centrar las variables:
-
-```{r}
-casas_ent <- casas_ent %>% mutate(sotano_10_m2 = (BsmtFinSF1 * 0.092903) / 10 )
-casas_ent_mod <- casas_ent %>% 
-  mutate(sotano_10_m2_c = sotano_10_m2 - mean(sotano_10_m2),
-         habitable_100_m2_c = habitable_100_m2 - mean(habitable_100_m2))
-modelo_casas <- lm( precio_miles ~ 1 + habitable_100_m2_c + sotano_10_m2_c + calidad:habitable_100_m2, data = casas_ent_mod)
-coef(modelo_casas)
-```
-
-Vemos que todos los coeficientes se quedan igual (misma interpetación), excepto la ordenada. En este caso:
-
-- La predicción de precio para una casa de tamaño promedio, con sótano de tamaño promedio y calidad=0 es de 142 mil dólares.
-
+- La ordenada al origen se interpreta como sigue: para calidad media (calidad = 0), 
+y tamaño promedio (habitable_100_m2_c = 0),
+en un una casa que no tiene 2 pisos, la predicción es de 1.3 miles de dólares por m2.
+- El coeficiente de *calidad*: dejando fijo *tiene_piso_2* y tamaño, la predicción de precio por m2 aumenta
+en 136 dólares adicionales por cada punto que sube la calidad.
+- El coeficiente de *tiene_piso_2*: dejando constante la calidad y el tamaño, la predicción de precio por m2
+baja en 350 dólares si la casa tiene 2 pisos en lugar de 1.
+- El coeficiente de *habitable_100_m2_c*: dejando constante la calidad y el número de pisos, 
+la predicción de precio por m2 baja en 270 dólares por cada 100 m2 adicionales de tamaño de la casa.
 
 Así podemos explicar cada predicción - considerando qué variables aportan positiva y cuáles
 negativamente a la predicción, cuando mantenemos el resto constante. 
@@ -944,11 +929,13 @@ lineal entre $y$ y sus covariables es casi determinística:
 
 ```{r}
 respuesta <- function(x_1, x_2){
-    1 + 2*x_1 + 2*x_2 +  10 * exp(-(x_1/0.2)^2 -((x_2 +1)/0.2)^2)
+    # función no lineal
+    1 + 2*x_1 + 2*x_2 +  10 * exp(-(x_1 / 0.2)^2 -((x_2 + 1) / 0.2)^2)
 }
 df <- tibble(x_1 = seq(-2, 2, 0.005)) %>% 
     mutate(x_2 = abs(x_1) - 2 + rnorm(length(x_1), 0, 0.1), 
         y = respuesta(x_1, x_2) + rnorm(length(x_1), 0, 0.01))
+cor(df)
 summary(lm(y ~ x_1 + x_2, data = df) )
 ```
 Claramente recuperamos los coeficientes reales con este ejemplo.
@@ -965,6 +952,7 @@ estimación acaba siendo una extrapolación no soportada por los
 datos.
 
 ```{r}
+# aumentar una unidad en x_1
 respuesta(-1 + 1, -1) - respuesta(-1,-1)
 ```
 
@@ -980,9 +968,10 @@ Esta extrapolación es fácil de descubrir en este ejemplo, pero es
 mucho más difícil de detectar en dimensión alta (muchas variables
 de entrada).
 
-Otros cuidados adicionales, aún más sutiles e importantes, se requieren si queremos hacer afirmaciones causales:
+Otros cuidados adicionales, aún más sutiles e importantes, se requieren si queremos hacer afirmaciones causales: ¿qué pasaría si diseñáramos una intervención para cambiar una característica de las 
+unidades¿ ¿qué nos dice modelos acerca del cambio en la variable respuesta?
 
-- Variables omitidas: si faltan algunas variables cruciales en el fenómeno que nos
+- Variables omitidas: si nos faltan algunas variables cruciales en el fenómeno que nos
 interesa, puede ser muy difícil interpretar el resto de los coeficientes en términos 
 del fenómeno.
 
