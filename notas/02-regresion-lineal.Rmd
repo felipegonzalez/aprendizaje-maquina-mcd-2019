@@ -910,70 +910,30 @@ una revisión de la especificación correcta del modelo. Parte de estos
 cuidados se estudian en un curso de regresión desde el punto de vista
 estadístico, por ejemplo:
 
-- La interpretación coeficiente a coeficiente no toma en cuenta la estructura
-de asociación de las $x's$. Rara vez *cambios marginales* en una variable 
-de entrada ocurren
-de manera independiente de las otras variables de entrada.
 
-- Variación muestral. Es necesario considerar la variación en nuestras estimaciones
+- Variación muestral. Es necesario en primer lugar 
+considerar la variación en nuestras estimaciones
 de los coeficientes para poder concluir acerca de su relación con el fenómeno (tratable desde punto de vista estadístico, pero hay que checar supuestos). 
 
-- Efectos no lineales: si la estructura del problema es altamente no lineal,
+- Efectos no lineales (especificación incorrecta del modelo): si la 
+estructura del problema es altamente no lineal,
 los coeficientes de un modelo lineal no tienen una interpretación clara en relación 
 al fenómeno. 
 
-#### Ejemplo: ¿todo lo demás constante? {-}
+- La interpretación coeficiente a coeficiente no toma en cuenta la estructura
+de asociación de las $x's$. Rara vez *cambios marginales* en una variable 
+de entrada ocurren
+de manera independiente de las otras variables de entrada. Eso hace difícil de interpretar
+los coeficientes.
 
-Consideramos un ejemplo donde el ruido es bajo y la relación
-lineal entre $y$ y sus covariables es casi determinística:
-
-```{r}
-respuesta <- function(x_1, x_2){
-    # función no lineal
-    1 + 2*x_1 + 2*x_2 +  10 * exp(-(x_1 / 0.2)^2 -((x_2 + 1) / 0.2)^2)
-}
-df <- tibble(x_1 = seq(-2, 2, 0.005)) %>% 
-    mutate(x_2 = abs(x_1) - 2 + rnorm(length(x_1), 0, 0.1), 
-        y = respuesta(x_1, x_2) + rnorm(length(x_1), 0, 0.01))
-cor(df)
-summary(lm(y ~ x_1 + x_2, data = df) )
-```
-Claramente recuperamos los coeficientes reales con este ejemplo.
-
-Ahora supongamos que hacemos la pregunta: ¿Cómo cambia la predicción
-cuando el valor de $x_1$ aumenta en una unidad? Por el coeficiente,
-sabemos que es 2 unidades. Sin embargo, esto no  necesariamente tiene nada qué
-ver con lo que pasaría si manipuláramos individualmente esa
-variable para aumentarla en una unidad:
-
-Cuando hacemos el cambio propuesto (excepto por uno muy pequeño),
-rápidamente pasamos a una zona donde no hay datos, y nuestra
-estimación acaba siendo una extrapolación no soportada por los 
-datos.
-
-```{r}
-# aumentar una unidad en x_1
-respuesta(-1 + 1, -1) - respuesta(-1,-1)
-```
-
-```{r, fig.width=4, fig.asp=0.7}
-df_punto <- tibble(x_1 = c(-1, -0.0), x_2 = c(-1, -1))
-ggplot(df, aes(x_1, x_2)) + geom_point() +
-    geom_point(data = df_punto, col = "red", size = 3) +
-    geom_segment(data = tibble(x=-1, y=-1, xend = -0.0, yend=-1),
-                 aes(x=x,y=y,xend=xend,yend=yend), colour = 'red')
-```
-
-Esta extrapolación es fácil de descubrir en este ejemplo, pero es
-mucho más difícil de detectar en dimensión alta (muchas variables
-de entrada).
-
-Otros cuidados adicionales, aún más sutiles e importantes, se requieren si queremos hacer afirmaciones causales: ¿qué pasaría si diseñáramos una intervención para cambiar una característica de las 
+Otros cuidados adicionales, aún más sutiles e importantes, se requieren si queremos hacer 
+afirmaciones causales: ¿qué pasaría si diseñáramos una intervención para cambiar una característica de las 
 unidades¿ ¿qué nos dice modelos acerca del cambio en la variable respuesta?
 
 - Variables omitidas: si nos faltan algunas variables cruciales en el fenómeno que nos
-interesa, puede ser muy difícil interpretar el resto de los coeficientes en términos 
-del fenómeno.
+interesa, o el modelo sufre de otro tipo de especificación incorrecta ,
+puede ser muy difícil interpretar los coeficientes en términos del fenómeno. Por ejemplo:
+
 
 #### Ejemplo: ¿interpretación causal? {-}
 
