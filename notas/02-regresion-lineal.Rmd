@@ -103,9 +103,9 @@ $$\hat{\beta} = \mathrm{arg\,min}_{\beta} L(\beta) = \mathrm{arg\,min}_{\beta}\f
 **Observación**:
 Como discutimos al final de las sección anterior, minimizar directamente el error
  de entrenamiento para encontrar los coeficientes puede resultar en en un modelo
- sobreajustado/con varianza alta/ruidoso. En la sección anterior discutimos
- tres grandes estrategias para mitigar este problema (restringir o estructurar la familia
- de funciones, penalizar la función objetivo o perturbar la muestra de entrenamiento).
+ sobreajustado/con varianza alta/ruidoso. Hay
+ tres grandes estrategias para mitigar este problema: restringir o estructurar la familia
+ de funciones, penalizar la función objetivo o perturbar la muestra de entrenamiento.
  El método mas común es cambiar la función objetivo, que discutiremos más adelante
  en la sección de regularización.
  
@@ -234,7 +234,7 @@ graf_ent_f +
 
 **Ejercicio**: ¿Cómo mejoramos el ajuste? Tenemos que minimizar el
 error cuadrático medio. Usa estas gráficas para modificar los parámetros y minimizar 
-el error cuadrático medio.
+el error cuadrático medio (utiliza el app en la carpeta ``apps/``).
 
 ---
 
@@ -245,7 +245,7 @@ para nuevos casos:
 ```{r}
 x_val <- casas_val %>% select(habitable_100_m2, calidad_m2) %>% as.matrix
 y_val <- casas_val$precio_miles
-beta <- c(100, 25, 20)
+beta <- c(100, 25, 20) # interpreta estos coeficientes
 predecir <- preds_fun(beta)
 y_pred <- predecir(x_val)
 y_hat <- predecir(x_ent)
@@ -258,7 +258,7 @@ sprintf ("Error entrenamiento: %3.1f, Error validación: %3.1f (miles de dólare
 También podemos escribir como coeficientes de variación:
 
 ```{r}
-sprintf ("Error entrenamiento: %3.2f, Error validación: %3.2f (miles de dólares)", 
+sprintf ("Error entrenamiento: %3.2f, Error validación: %3.2f (%%)", 
          sqrt(mean((y_ent  - y_hat)^2)) / mean(y_ent),
          sqrt(mean((y_val - y_pred)^2)) / mean(y_val))
 ```
@@ -857,7 +857,7 @@ Mientras que el modelo no estandarizado todavía requiere iteraciones:
 
 ```{r}
 get_weights(modelo_casas_ns)
-coef(lm.fit(cbind(1,x_ent), y_ent))
+coef(lm.fit(cbind(1, x_ent), y_ent))
 ```
 
 
@@ -873,10 +873,11 @@ En primer lugar, podemos separar la interpretación en dos modalidades:
 2. Entender aspectos del fenóomeno de interés a través de nuestro modelo.
 
 Las interpretaciones del tipo 1 son en general simples para modelos lineales,
-y se tratan de ejercicios descriptivos de la estructura del modelo. Para modelos más complicados es necesario usar herramientas más complejas.
+y sirven para explicar la estructura del modelo. Para modelos más complicados es 
+necesario usar herramientas más complejas (que veremos más adelante).
 
-Sin embargo, las interpretaciones de tipo 2 están llenas de dificultades,
-incluso si utilizamos modelos lineales.
+Sin embargo, **las interpretaciones de tipo 2 están llenas de dificultades,
+incluso si utilizamos modelos lineales**.
 
 
 #### Ejemplo {-}
@@ -915,7 +916,8 @@ Vemos que todos los coeficientes se quedan igual (misma interpetación), excepto
 
 
 Así podemos explicar cada predicción - considerando qué variables aportan positiva y cuáles
-negativamente a la predicción. **El camino más seguro es limitarse a hacer este
+negativamente a la predicción, cuando mantenemos el resto constante. 
+**El camino más seguro es limitarse a hacer este
 tipo de análisis de las predicciones**. Hablamos de entender la estructura predictiva
 del problema con los datos que tenemos - y no intentamos ir hacia la explicación
 del fenómeno.
@@ -951,11 +953,11 @@ df <- tibble(x_1 = seq(-2, 2, 0.005)) %>%
         y = respuesta(x_1, x_2) + rnorm(length(x_1), 0, 0.01))
 summary(lm(y ~ x_1 + x_2, data = df) )
 ```
-Claramente reperamos los coeficientes reales con este ejemplo.
+Claramente recuperamos los coeficientes reales con este ejemplo.
 
 Ahora supongamos que hacemos la pregunta: ¿Cómo cambia la predicción
 cuando el valor de $x_1$ aumenta en una unidad? Por el coeficiente,
-sabemos que es 2 unidades. Sin embargo, esto no tiene nada qué
+sabemos que es 2 unidades. Sin embargo, esto no  necesariamente tiene nada qué
 ver con lo que pasaría si manipuláramos individualmente esa
 variable para aumentarla en una unidad:
 
@@ -979,7 +981,6 @@ ggplot(df, aes(x_1, x_2)) + geom_point() +
 Esta extrapolación es fácil de descubrir en este ejemplo, pero es
 mucho más difícil de detectar en dimensión alta (muchas variables
 de entrada).
-
 
 Otros cuidados adicionales, aún más sutiles e importantes, se requieren si queremos hacer afirmaciones causales:
 
@@ -1007,8 +1008,6 @@ modelo nos puede decir de esta especificación incorrecta.
 En general, la recomendación es que las interpretaciones causales deben considerarse
 como preliminares (o *sugerencias*), y se requiere más análisis y consideraciones
 antes de poder tener interpretaciones causales sólidas. 
-
-
 
 
 ## ¿Por qué el modelo lineal funciona bien (muchas veces)?
@@ -1132,8 +1131,8 @@ entrenamiento (independientemente del tamaño) sufre fuertemente por uno o ambas
 
 #### Ejemplo {-}
  Consideremos que la salida Y es determinística $Y = e^{-8\sum_{j=1}^p x_j^2}$.
-Vamos a usar 1-vecino más cercano para hacer predicciones, c
-on una muestra de entrenamiento de 1000 casos.
+Vamos a usar 1-vecino más cercano para hacer predicciones, con 
+una muestra de entrenamiento de 1000 casos.
 Generamos $x^{i}‘s uniformes en $[ 1,1]$, para $p = 2$, y calculamos la respuesta 
 $Y$ para cada caso:
 
