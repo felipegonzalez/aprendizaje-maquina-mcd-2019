@@ -121,36 +121,28 @@ casas <- read_csv("../datos/houseprices/house-prices.csv")
 ```
 
 ¿Cuáles deberían ser las variables más importantes? Debemos considerar
-al menos, el tamaño de las casas, la calidad de sus terminados y su ubicación.
-Vamos a comenzar con tamaño y calidad. Un modelo que no tiene mucho sentido
+al menos, el tamaño de las casas, la calidad de sus terminados, su ubicación,
+y tipo de casa (dos pisos, un piso, etc.). 
+Vamos a comenzar consierando tamaño, calidad y tipo de casa. Un modelo que no tiene mucho sentido
 empezar ajustando es
 
-$$Precio = \beta_0 + \beta_1 Calidad + \beta_2 Tamaño,$$
+$$Precio = \beta_0 + \beta_1 Calidad + \beta_2 Tamaño + \beta_3 Pisos,$$
 
 porque esto implicaría que el precio por metro cuadrado de las casas es constante,
-y la calidad de las casas solo aporta una cantidad fija. En lugar de eso, consideramos:
+y la calidad de las casas solo aporta una cantidad fija a su precio total. Una estrategia
+que podemos considerar es el modelo:
 
-$$Precio = \beta_0 + \left( \beta_1 + \beta_2 Calidad\right) Tamaño$$
-Es decir, el precio por metro cuadrado varía con la calidad. Reescribimos como:
+$$Precio =  \left( \beta_0 + \beta_1 Calidad\right + \beta_2 Pisos) \, Tamaño$$
+Es decir, el precio por metro cuadrado varía con la calidad y el número de pisos. Podemos modelar
+entonces, en lugar del Precio, 
 
-$$Precio = \beta_0 + \beta_1 Tamaño + \beta_2 Calidad ^*Tamaño,$$
+$$Precio_{m^2} = \beta_0 + \beta_1 Calidad + \beta_2 Pisos,$$
 
-y *este es un modelo lineal*, pero necesitamos calcular una variable más (el producto de
-calidad por tamaño). 
+y *este es un modelo lineal*. Para hacer predicciones del *Precio*, después multiplicamos
+la predicción del precio por metros cuadrados por *Tamaño*. 
 
 En primer lugar, dividimos los datos en al menos dos partes: una parte para entrenar
-el modelo y otra para validarlo (estimar el error de predicción):
-
-```{r}
-# calculamos variables derivadas:
-casas <- mutate(casas, 
-                precio_miles = SalePrice / 1000,
-                habitable_100_m2 = (GrLivArea * 0.092903) / 100,
-                calidad = OverallQual - 5, # una medida entre -5 y 5
-                calidad_m2 = calidad * habitable_100_m2)
-```
-
-Y ahora dividimos muestra de entrenamiento y de validación:
+el modelo y otra para validarlo (estimar el error de predicción). 
 
 ```{r}
 set.seed(13)
@@ -160,37 +152,47 @@ sprintf("Total: %1.f, Entrena: %1.f, Validación: %1.f",
         nrow(casas), nrow(casas_ent), nrow(casas_val))
 ```
 
+Y requerimos calcular la variable adicional de *Pisos*. Los datos sólo reportan
+hasta 2 pisos de área habitable, así que esta variable valdrá 1 si hay segundo piso
+y 0 si no y calculamos algunas otras variables derivadas. En este caso podemos escribir una
+función que aplicamos tanto a entrenamiento como validación:
+
+```{r}
+agregar_vars <- function(dat){
+    dat_nueva <- dat %>% mutate(tiene_piso_2 = as.numeric(`2ndFlrSF` > 0),
+                                precio_miles = SalePrice / 1000, 
+                                habitable_m2 = (GrLivArea * 0.092903),
+                                precio_m2_miles = precio_miles / habitable_m2,
+                                calidad = OverallQual - 5)
+    dat_nueva
+}
+casas_ent <- casas_ent %>% agregar_vars
+casas_val <- casas_val %>% agregar_vars
+write_rds(casas_ent, "../temp/casas_ent.rds")
+write_rds(casas_ent, "../temp/casas_val.rds")
+```
+
+
 Veamos unos resúmenes de nuestra muestra de entrenamiento:
 ```{r}
 casas_ent %>% pull(precio_miles) %>% quantile
-casas_ent %>% pull(habitable_100_m2) %>% quantile %>% round(2)
-casas_ent %>% pull(calidad_m2) %>% quantile %>% round(2)
+casas_ent %>% pull(precio_m2_miles) %>% quantile
+casas_ent %>% pull(habitable_m2) %>% quantile %>% round(2)
 casas_ent %>% pull(calidad) %>% quantile
 ```
 
 
 ```{r}
 graf_ent <- ggplot(casas_ent, 
-       aes(x = habitable_100_m2, y = precio_miles)) + 
-    geom_point(size=1, alpha = 0.5) + facet_wrap(~calidad) 
+       aes(x = calidad, y = precio_m2_miles)) + 
+    geom_point(size=1, alpha = 0.5) + facet_wrap(~tiene_piso_2) 
 graf_ent
 ```
-
-Podemos filtrar por un momento para ver con más detalle los patrones:
-
-```{r}
-graf_ent_f <- ggplot(casas_ent %>% filter(calidad > -3, precio_miles < 600), 
-       aes(x = habitable_100_m2, y = precio_miles)) + 
-    geom_point(size=1, alpha = 0.5) + facet_wrap(~calidad) 
-graf_ent_f
-```
-
-
 
 Podemos poner algunos valores tentativos a los coeficientes y evaluar nuestro modelo:
 
 ```{r}
-beta <- c(0, 50, 20)
+beta <- c(1, 0.2, 0.5)
 beta
 ```
 
@@ -204,8 +206,8 @@ preds_fun <- function(beta){
         cbind(1, x_ent) %*% beta
     }
 }
-x_ent <- casas_ent %>% select(habitable_100_m2, calidad_m2) %>% as.matrix
-y_ent <- casas_ent$precio_miles
+x_ent <- casas_ent %>% select(calidad, tiene_piso_2) %>% as.matrix
+y_ent <- casas_ent$precio_m2_miles
 predecir <- preds_fun(beta)
 y_hat <- predecir(x_ent)
 ```
@@ -225,10 +227,9 @@ Como estamos considerando pocas variables, podemos graficar para ver cómo
 se comparan valores ajustadas con observados:
 
 ```{r}
-graf_ent_f + 
-    geom_line(data = casas_ent %>% mutate(preds = y_hat) %>% 
-                  filter(calidad > -3, precio_miles < 600),
-              aes(x = habitable_100_m2, y = preds, col = "red"))
+graf_ent + 
+    geom_line(data = casas_ent %>% mutate(preds = y_hat), 
+              aes(x = calidad, y = preds, col = "red"))
 ```
 
 
@@ -243,14 +244,14 @@ nos da una **medida honesta** del error que esperamos al usar el modelo
 para nuevos casos:
 
 ```{r}
-x_val <- casas_val %>% select(habitable_100_m2, calidad_m2) %>% as.matrix
-y_val <- casas_val$precio_miles
-beta <- c(100, 25, 20) # interpreta estos coeficientes
+x_val <- casas_val %>% select(calidad, tiene_piso_2) %>% as.matrix
+y_val <- casas_val$precio_m2_miles
+beta <- c(1.3, 0.16, -0.5) # interpreta estos coeficientes
 predecir <- preds_fun(beta)
 y_pred <- predecir(x_val)
 y_hat <- predecir(x_ent)
 
-sprintf ("Error entrenamiento: %3.1f, Error validación: %3.1f (miles de dólares)", 
+sprintf ("Error entrenamiento: %3.2f, Error validación: %3.2f (miles de dólares)", 
          sqrt(mean((y_ent  - y_hat)^2)),
          sqrt(mean((y_val - y_pred)^2)))
 ```
@@ -263,7 +264,6 @@ sprintf ("Error entrenamiento: %3.2f, Error validación: %3.2f (%%)",
          sqrt(mean((y_val - y_pred)^2)) / mean(y_val))
 ```
 
-- El error de validación típicamente es típicamente es más alto que el error calculado con la muestra de entrenamiento (¿Puedes explicar intuitivamente por qué?). 
 
 Podemos también comparar observados y ajustados para ver cómo se comportan los
 errores:
@@ -274,10 +274,8 @@ qplot(y_hat, y_ent, alpha = 0.5) + geom_abline(colour = "red") +
     scale_x_continuous(breaks = seq(100, 700, by = 100))
 ```
 
-Y notamos que algunas predicciones son considerablemente malas.
-Nos preocupan principalmente casas con predicciones muy altas, en particular
-un atípico en donde nuestra ajuste falló catastróficamente (¿Cómo crees que podamos
-arreglar este problema?).
+Y notamos que algunas predicciones son considerablemente malas ¿Cómo crees que podamos
+arreglar este problema?.
 
 ---
 
@@ -653,7 +651,7 @@ get_weights(modelo_casas)
  La implementación oficial de R es *lm*, que en general tiene buen desempeño para datos que caben en memoria:
 
 ```{r}
-lm(precio_miles ~ habitable_100_m2 + calidad_m2, data = casas_ent) %>% coef
+lm(precio_m2_miles ~ calidad + tiene_piso_2, data = casas_ent) %>% coef
 ```
 
 Si lo corremos 500 iteraciones adicionales:
@@ -835,7 +833,7 @@ ajustar_casas <- function(modelo, x, y, n_epochs = 100){
 }
 
 modelo_casas_ns <- crear_modelo(0.07)
-modelo_casas_s <- crear_modelo(0.5)
+modelo_casas_s <- crear_modelo(0.2)
 historia_s <- ajustar_casas(modelo_casas_s, x_ent_s, y_ent) %>% 
   mutate(tipo = "Estandarizar")
 historia_ns <- ajustar_casas(modelo_casas_ns, x_ent, y_ent) %>% 
@@ -882,7 +880,7 @@ incluso si utilizamos modelos lineales**.
 
 #### Ejemplo {-}
 
-Vamos a agregar dos variables adicionales a nuestro modelo de precios de casas:
+Consideramos otro modelo para estudiar su estructura:
 
 ```{r}
 casas_ent <- casas_ent %>% mutate(sotano_10_m2 = (BsmtFinSF1 * 0.092903) / 10 )
@@ -1073,19 +1071,17 @@ razonables es necesario hacer ejercicios de modelación más delicados (como la 
 este modelo todavía requiere trabajo, ¿cómo podríamos mejorarlo?):
 
 ```{r, message = FALSE}
-modelo_casas <- lm(precio_miles ~ habitable_100_m2 + calidad_m2 + GarageArea +
-                       BsmtFinSF1,
-                   data = casas_ent, weights = 1 / habitable_100_m2^2)
+modelo_casas <- lm(precio_m2_miles ~ calidad + tiene_piso_2, data = casas_ent)
 preds_val <- predict(modelo_casas, newdata = casas_val, interval = "prediction",
-                     level = 0.95,
-                     weights = 1 / casas_val$habitable_100_m2^2)
-valida_g <- bind_cols(preds_val %>% as_tibble, casas_val %>% select(precio_miles))
+                     level = 0.95)
+preds_val_precio <- preds_val * casas_val$habitable_m2
+valida_g <- bind_cols(preds_val_precio %>% as_tibble, casas_val %>% select(precio_miles))
 head(valida_g)
 ggplot(valida_g, aes(x = fit, ymin = lwr, ymax = upr)) +
     geom_linerange(colour = "gray") +
     geom_point(aes(y = precio_miles, x = fit), colour = "red")
 valida_g %>% mutate(cubre = precio_miles > lwr & precio_miles < upr) %>% 
-    summarise(cobertura = mean(cubre), ee = sqrt(mean(cubre)*mean(1-cubre)/n()))
+    summarise(cobertura = mean(cubre), ee = sqrt(mean(cubre) * mean(1 - cubre) / n()))
 ```
 
 

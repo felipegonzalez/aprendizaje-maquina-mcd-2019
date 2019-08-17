@@ -9,26 +9,22 @@
 library(shiny)
 
 # Preparar datos
-casas <- read_csv("../../datos/houseprices/house-prices.csv")
-casas <- mutate(casas, 
-                precio_miles = SalePrice / 1000,
-                habitable_100_m2 = (GrLivArea * 0.092903) / 100,
-                calidad = OverallQual - 5, # una medida entre -5 y 5
-                calidad_m2 = calidad * habitable_100_m2)
-set.seed(13)
-casas_ent <- sample_frac(casas, 0.7)
-graf_ent_f <- ggplot(casas_ent, #%>% filter(calidad > -3, precio_miles < 600), 
-                     aes(x = habitable_100_m2, y = precio_miles)) + 
-    geom_point(size=1, alpha = 0.5) + facet_wrap(~calidad) 
+casas_ent <- read_rds("../../temp/casas_ent.rds")
+casas_val <- read_rds("../../temp/casas_val.rds")
 preds_fun <- function(x_ent){
     function(beta){
         cbind(1, x_ent) %*% beta
     }
 }
-x_ent <- casas_ent %>% select(habitable_100_m2, calidad_m2) %>% as.matrix
-y <- casas_ent$precio_miles
+x_ent <- casas_ent %>% select(calidad, tiene_piso_2) %>% as.matrix
+y <- casas_ent$precio_m2_miles
 preds <- preds_fun(x_ent)
-
+graf_ent <- ggplot(casas_ent, aes(x = calidad, y = precio_m2_miles)) +
+            geom_jitter(width = 0.25, alpha = 0.5) + facet_wrap(~tiene_piso_2)
+graf_ent_2 <- ggplot(casas_ent %>% filter(calidad > -3), 
+                     aes(x = habitable_m2, y = precio_miles, colour = factor(tiene_piso_2),
+                                    group = tiene_piso_2)) +
+    geom_jitter(width = 0.25, alpha = 0.5, size = 0.5) + facet_wrap(~calidad, scales="free") 
 
 # Aplicación
 ui <- fluidPage(
@@ -39,25 +35,27 @@ ui <- fluidPage(
         sidebarPanel(
             sliderInput("beta_0",
                         "b_0 (ordenada)",
-                        min =  0,
-                        max = 200,
-                        value = 30),
+                        min =  -3,
+                        max = 3,
+                        value = 0,
+                        step = 0.02),
             sliderInput("beta_1",
-                        "b_1  (habitable_m2)",
-                        min =  -100,
-                        max = 100,
-                        value = 0),
+                        "b_1  (calidad)",
+                        min =  -1,
+                        max = 1,
+                        step = 0.02, value = 0),
             sliderInput("beta_2",
-                        "b_2  calidad*habitable_m2",
-                        min =  -100,
-                        max = 100,
-                        value = 0)
+                        "b_2  (tiene 2 pisos)",
+                        min =  -1,
+                        max = 1,
+                        value = 0, step = 0.02)
         ),
 
         mainPanel(
-           p("precio_miles = b_0 + b_1 * habitable_100_m2 +  b_2 * calidad * habitable_100_m2 "),
+           p("precio_m2_miles = b_0 + b_1 * calidad +  b_2 * tiene_2_pisos "),
            tableOutput("error"),
-           plotOutput("distPlot")
+           plotOutput("pm2Plot"),
+           plotOutput("precioPlot")
         )
     )
 )
@@ -74,10 +72,16 @@ server <- function(input, output) {
                 valor = c( ecm, sqrt(calc_preds()$ecm)))
         tab
     })
-    output$distPlot <- renderPlot({
-            graf_ent_f + 
-            geom_point(data = casas_ent %>% mutate(preds = calc_preds()$y_hat), 
-                      aes(x = habitable_100_m2, y = preds, col = "red"), size = 0.5, alpha = 1)
+    output$pm2Plot <- renderPlot({
+            graf_ent + 
+            geom_line(data = casas_ent %>% mutate(preds = calc_preds()$y_hat), 
+                      aes(x = calidad, y = preds, col = "red"), size = 0.5, alpha = 1)
+    })
+    output$precioPlot <- renderPlot({
+        graf_ent_2 + 
+            geom_line(data = casas_ent %>% 
+                          mutate(preds = habitable_m2*calc_preds()$y_hat)%>% filter(calidad > -3), 
+                      aes(y = preds), size = 0.5, alpha = 1)
     })
 }
 
