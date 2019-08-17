@@ -121,36 +121,28 @@ casas <- read_csv("../datos/houseprices/house-prices.csv")
 ```
 
 ¿Cuáles deberían ser las variables más importantes? Debemos considerar
-al menos, el tamaño de las casas, la calidad de sus terminados y su ubicación.
-Vamos a comenzar con tamaño y calidad. Un modelo que no tiene mucho sentido
+al menos, el tamaño de las casas, la calidad de sus terminados, su ubicación,
+y tipo de casa (dos pisos, un piso, etc.). 
+Vamos a comenzar consierando tamaño, calidad y tipo de casa. Un modelo que no tiene mucho sentido
 empezar ajustando es
 
-$$Precio = \beta_0 + \beta_1 Calidad + \beta_2 Tamaño,$$
+$$Precio = \beta_0 + \beta_1 Calidad + \beta_2 Tamaño + \beta_3 Pisos,$$
 
 porque esto implicaría que el precio por metro cuadrado de las casas es constante,
-y la calidad de las casas solo aporta una cantidad fija. En lugar de eso, consideramos:
+y la calidad de las casas solo aporta una cantidad fija a su precio total. Una estrategia
+que podemos considerar es el modelo:
 
-$$Precio = \beta_0 + \left( \beta_1 + \beta_2 Calidad\right) Tamaño$$
-Es decir, el precio por metro cuadrado varía con la calidad. Reescribimos como:
+$$Precio =  \left( \beta_0 + \beta_1 \,Calidad + \beta_2 \,Pisos\right) \, Tamaño$$
+Es decir, el precio por metro cuadrado varía con la calidad y el número de pisos. Podemos modelar
+entonces, en lugar del Precio, 
 
-$$Precio = \beta_0 + \beta_1 Tamaño + \beta_2 Calidad ^*Tamaño,$$
+$$Precio_{m^2} = \beta_0 + \beta_1 \, Calidad + \beta_2 \, Pisos,$$
 
-y *este es un modelo lineal*, pero necesitamos calcular una variable más (el producto de
-calidad por tamaño). 
+y *este es un modelo lineal*. Para hacer predicciones del *Precio*, después multiplicamos
+la predicción del precio por metros cuadrados por *Tamaño*. 
 
 En primer lugar, dividimos los datos en al menos dos partes: una parte para entrenar
-el modelo y otra para validarlo (estimar el error de predicción):
-
-```{r}
-# calculamos variables derivadas:
-casas <- mutate(casas, 
-                precio_miles = SalePrice / 1000,
-                habitable_100_m2 = (GrLivArea * 0.092903) / 100,
-                calidad = OverallQual - 5, # una medida entre -5 y 5
-                calidad_m2 = calidad * habitable_100_m2)
-```
-
-Y ahora dividimos muestra de entrenamiento y de validación:
+el modelo y otra para validarlo (estimar el error de predicción). 
 
 ```{r}
 set.seed(13)
@@ -160,43 +152,51 @@ sprintf("Total: %1.f, Entrena: %1.f, Validación: %1.f",
         nrow(casas), nrow(casas_ent), nrow(casas_val))
 ```
 
+Y requerimos calcular la variable adicional de *Pisos*. Los datos sólo reportan
+hasta 2 pisos de área habitable, así que esta variable valdrá 1 si hay segundo piso
+y 0 si no y calculamos algunas otras variables derivadas. En este caso podemos escribir una
+función que aplicamos tanto a entrenamiento como validación:
+
+```{r}
+agregar_vars <- function(dat){
+    dat_nueva <- dat %>% mutate(tiene_piso_2 = as.numeric(`2ndFlrSF` > 0),
+                                precio_miles = SalePrice / 1000, 
+                                habitable_m2 = (GrLivArea * 0.092903),
+                                precio_m2_miles = precio_miles / habitable_m2,
+                                calidad = OverallQual - 5)
+    dat_nueva
+}
+casas_ent <- casas_ent %>% agregar_vars
+casas_val <- casas_val %>% agregar_vars
+write_rds(casas_ent, "../temp/casas_ent.rds")
+write_rds(casas_ent, "../temp/casas_val.rds")
+```
+
+
 Veamos unos resúmenes de nuestra muestra de entrenamiento:
 ```{r}
 casas_ent %>% pull(precio_miles) %>% quantile
-casas_ent %>% pull(habitable_100_m2) %>% quantile %>% round(2)
-casas_ent %>% pull(calidad_m2) %>% quantile %>% round(2)
+casas_ent %>% pull(precio_m2_miles) %>% quantile
+casas_ent %>% pull(habitable_m2) %>% quantile %>% round(2)
 casas_ent %>% pull(calidad) %>% quantile
 ```
 
 
 ```{r}
-graf_ent <- ggplot(casas_ent, 
-       aes(x = habitable_100_m2, y = precio_miles)) + 
-    geom_point(size=1, alpha = 0.5) + facet_wrap(~calidad) 
+graf_ent <- ggplot(casas_ent, aes(x = calidad, y = precio_m2_miles)) + 
+    geom_jitter(size=1, alpha = 0.5, width = 0.3, height = 0) + 
+    facet_wrap(~tiene_piso_2) 
 graf_ent
 ```
-
-Podemos filtrar por un momento para ver con más detalle los patrones:
-
-```{r}
-graf_ent_f <- ggplot(casas_ent %>% filter(calidad > -3, precio_miles < 600), 
-       aes(x = habitable_100_m2, y = precio_miles)) + 
-    geom_point(size=1, alpha = 0.5) + facet_wrap(~calidad) 
-graf_ent_f
-```
-
-
 
 Podemos poner algunos valores tentativos a los coeficientes y evaluar nuestro modelo:
 
 ```{r}
-beta <- c(0, 50, 20)
+beta <- c(1, 0.2, 0.5)
+names(beta) <- c("beta_0", "beta_1", "beta_2")
 beta
 ```
 
-Que quiere decir que en casas promedio en calidad (5), el precio por metro cuadrado
-es de 50 dólares, y cada subida en calidad sobre 5 aporta 20 dólares adicionales por metro
-cuadrado.
 
 ```{r}
 preds_fun <- function(beta){
@@ -204,8 +204,8 @@ preds_fun <- function(beta){
         cbind(1, x_ent) %*% beta
     }
 }
-x_ent <- casas_ent %>% select(habitable_100_m2, calidad_m2) %>% as.matrix
-y_ent <- casas_ent$precio_miles
+x_ent <- casas_ent %>% select(calidad, tiene_piso_2) %>% as.matrix
+y_ent <- casas_ent$precio_m2_miles
 predecir <- preds_fun(beta)
 y_hat <- predecir(x_ent)
 ```
@@ -225,10 +225,8 @@ Como estamos considerando pocas variables, podemos graficar para ver cómo
 se comparan valores ajustadas con observados:
 
 ```{r}
-graf_ent_f + 
-    geom_line(data = casas_ent %>% mutate(preds = y_hat) %>% 
-                  filter(calidad > -3, precio_miles < 600),
-              aes(x = habitable_100_m2, y = preds, col = "red"))
+graf_ent + geom_line(data = casas_ent %>% mutate(preds = y_hat), 
+    aes(x = calidad, y = preds, col = "red"))
 ```
 
 
@@ -243,14 +241,14 @@ nos da una **medida honesta** del error que esperamos al usar el modelo
 para nuevos casos:
 
 ```{r}
-x_val <- casas_val %>% select(habitable_100_m2, calidad_m2) %>% as.matrix
-y_val <- casas_val$precio_miles
-beta <- c(100, 25, 20) # interpreta estos coeficientes
+x_val <- casas_val %>% select(calidad, tiene_piso_2) %>% as.matrix
+y_val <- casas_val$precio_m2_miles
+beta <- c(1.3, 0.16, -0.5) # interpreta estos coeficientes
 predecir <- preds_fun(beta)
 y_pred <- predecir(x_val)
 y_hat <- predecir(x_ent)
 
-sprintf ("Error entrenamiento: %3.1f, Error validación: %3.1f (miles de dólares)", 
+sprintf ("Error entrenamiento: %3.2f, Error validación: %3.2f (miles de dólares)", 
          sqrt(mean((y_ent  - y_hat)^2)),
          sqrt(mean((y_val - y_pred)^2)))
 ```
@@ -263,21 +261,20 @@ sprintf ("Error entrenamiento: %3.2f, Error validación: %3.2f (%%)",
          sqrt(mean((y_val - y_pred)^2)) / mean(y_val))
 ```
 
-- El error de validación típicamente es típicamente es más alto que el error calculado con la muestra de entrenamiento (¿Puedes explicar intuitivamente por qué?). 
-
-Podemos también comparar observados y ajustados para ver cómo se comportan los
+En este caso ambos errores son muy similares, aunque típicamente el error de validación
+tiende a ser más alto que el de entrenamiento. Podemos también comparar observados y 
+ajustados para ver cómo se comportan los
 errores:
 
 ```{r}
-qplot(y_hat, y_ent, alpha = 0.5) + geom_abline(colour = "red") +
-    scale_y_continuous(breaks = seq(100, 700, by = 100)) +
-    scale_x_continuous(breaks = seq(100, 700, by = 100))
+pred_obs <- tibble(y_hat = y_hat, y_ent = y_ent)
+ggplot(pred_obs, aes(x = y_hat, y = y_ent, alpha = 0.5)) +
+    geom_point() +
+    geom_abline(colour = "red")
 ```
 
-Y notamos que algunas predicciones son considerablemente malas.
-Nos preocupan principalmente casas con predicciones muy altas, en particular
-un atípico en donde nuestra ajuste falló catastróficamente (¿Cómo crees que podamos
-arreglar este problema?).
+Y notamos que algunas predicciones son considerablemente malas ¿Cómo crees que podamos
+arreglar este problema?.
 
 ---
 
@@ -288,11 +285,13 @@ Ahora veremos cómo resolver el problema de minimización para ajustar el modelo
 de regresión lineal con error cuadrático. Hay varias maneras de hacer esto:
 
 - En el enfoque tradicional, se usan soluciones analíticas del problema de minimización
-y técnicas de álgebra lineal (por ejemplo, *lm* en R). Este método es efectivo para problemas chicos y medianos.
+y técnicas de álgebra lineal (por ejemplo, *lm* en R). Este método es efectivo para problemas chicos y medianos. Estas técnicas se escalan en parte a problemas grandes, pero no es muy simple hacerlo.
 - Es posible utilizar algoritmos de optimización estándar. Hay una variedad grande de ellos,
-algunos muy sofisticados y poderosos.
-- En términos de escalamiento y simplicidad, el método de descenso en gradiente es muy efectivo
-para escalar a datos grandes y modelos emás complejos (por ejemplo redes neuronales). 
+algunos muy sofisticados y poderosos, pero en muchos problemas grandes no necesariamente
+escalan apropiadamente.
+- En términos de escalamiento y simplicidad, el método de descenso en gradiente y sus
+variantes es muy efectivo
+para escalar a datos grandes y modelos más complejos (por ejemplo redes neuronales). 
 
 Notamos que el problema de minimización para regresión no es particularmente difícil:
 
@@ -595,25 +594,24 @@ n_entrena <- nrow(x_ent)
 crear_modelo <- function(lr = 0.05){
     modelo_casas <- 
         keras_model_sequential() %>%
-        layer_dense(units = 1,        #una sola respuesta, que depende de todas las variables anteriores
-            activation = "linear",    # linealmente
+        layer_dense(units = 1,        #una sola respuesta,
+            activation = "linear",    # combinar variables linealmente
             kernel_initializer = initializer_constant(0), #inicializamos coeficientes en 0
             bias_initializer = initializer_constant(0))   #inicializamos ordenada en 0
-
-    # seleccionar cantidad a minimizar, optimizador y métricas
+    # compilar seleccionanfo cantidad a minimizar, optimizador y métricas
     modelo_casas %>% compile(
         loss = "mean_squared_error",  # pérdida cuadrática
-        optimizer = optimizer_sgd(lr = lr), # descenso en gradiente, sin calcular derivadas!
+        optimizer = optimizer_sgd(lr = lr), # descenso en gradiente
         metrics = list("mean_squared_error"))
     modelo_casas
 }
 modelo_casas <- crear_modelo()
-# iteramos
-# Probamos con un número de iteraciones baja primero  
+# Ahora iteramos
+# Primero probamos con un número bajo de iteraciones
 historia <- modelo_casas %>% fit(
   as.matrix(x_ent), # x entradas
   y_ent,            # y salida o target
-  batch_size = nrow(x_ent), # para descenso en gradient
+  batch_size = nrow(x_ent), # para descenso en gradiente
   epochs = 20, # número de iteraciones
   verbose = 0
 )
@@ -621,7 +619,7 @@ historia <- modelo_casas %>% fit(
 ```
 
 
-```{r}
+```{r, fig.width =5, fig.height = 3.5}
 plot(historia, metrics = "mean_squared_error", smooth = FALSE)
 ```
 
@@ -639,7 +637,7 @@ historia <- modelo_casas %>% fit(
 ```
 
 
-```{r}
+```{r, fig.width =5, fig.height = 3.5}
 plot(historia, metrics = "mean_squared_error", smooth = FALSE) 
 ```
 
@@ -653,7 +651,7 @@ get_weights(modelo_casas)
  La implementación oficial de R es *lm*, que en general tiene buen desempeño para datos que caben en memoria:
 
 ```{r}
-lm(precio_miles ~ habitable_100_m2 + calidad_m2, data = casas_ent) %>% coef
+lm(precio_m2_miles ~ calidad + tiene_piso_2, data = casas_ent) %>% coef
 ```
 
 Si lo corremos 500 iteraciones adicionales:
@@ -835,7 +833,7 @@ ajustar_casas <- function(modelo, x, y, n_epochs = 100){
 }
 
 modelo_casas_ns <- crear_modelo(0.07)
-modelo_casas_s <- crear_modelo(0.5)
+modelo_casas_s <- crear_modelo(0.2)
 historia_s <- ajustar_casas(modelo_casas_s, x_ent_s, y_ent) %>% 
   mutate(tipo = "Estandarizar")
 historia_ns <- ajustar_casas(modelo_casas_ns, x_ent, y_ent) %>% 
@@ -882,38 +880,23 @@ incluso si utilizamos modelos lineales**.
 
 #### Ejemplo {-}
 
-Vamos a agregar dos variables adicionales a nuestro modelo de precios de casas:
+Consideramos otro modelo para estudiar su estructura:
 
 ```{r}
-casas_ent <- casas_ent %>% mutate(sotano_10_m2 = (BsmtFinSF1 * 0.092903) / 10 )
-modelo_casas <- lm( precio_miles ~ 1 + habitable_100_m2 + sotano_10_m2 + calidad:habitable_100_m2, data = casas_ent)
+casas_ent <- casas_ent %>% mutate(habitable_100_m2_c = (habitable_m2 - mean(habitable_m2))/100)
+modelo_casas <- lm( precio_m2_miles ~ 1 + calidad + tiene_piso_2 + habitable_100_m2_c, data = casas_ent)
 coef(modelo_casas)
 ```
 
-
-- El coeficiente de sótano se interpreta así: si en una casa dada, todo los demás constante, se aumenta en 10 m2 el sótano, la predicción de precio aumenta en 2.3 mil dólares.
-
-- Todo lo demás constante, el efecto de área habitable depende de la calidad:
-    - Para calidad = 0, un aumento de 100 m2 equivale a un aumento de unos 28 mil dólares en la predicción precio de venta
-    - Si la calidad sube un punto, entonces el incremento por cada 100m2 sube 19 mil dòlares adicionales la predicción
-    - Si la calidad decrece en un punto, entonces el incremento por cada 100m2 decrece 19 mil dólares adicionales en la predicción
-
-En este ejemplo en particular, interpretar la ordenada no tiene mucho sentido, pues
-es un precio esperado en calidad = 0 y área habitable y de sótano = 0 (que no existe en los datos). Podemos sin embargo centrar las variables:
-
-```{r}
-casas_ent <- casas_ent %>% mutate(sotano_10_m2 = (BsmtFinSF1 * 0.092903) / 10 )
-casas_ent_mod <- casas_ent %>% 
-  mutate(sotano_10_m2_c = sotano_10_m2 - mean(sotano_10_m2),
-         habitable_100_m2_c = habitable_100_m2 - mean(habitable_100_m2))
-modelo_casas <- lm( precio_miles ~ 1 + habitable_100_m2_c + sotano_10_m2_c + calidad:habitable_100_m2, data = casas_ent_mod)
-coef(modelo_casas)
-```
-
-Vemos que todos los coeficientes se quedan igual (misma interpetación), excepto la ordenada. En este caso:
-
-- La predicción de precio para una casa de tamaño promedio, con sótano de tamaño promedio y calidad=0 es de 142 mil dólares.
-
+- La ordenada al origen se interpreta como sigue: para calidad media (calidad = 0), 
+y tamaño promedio (habitable_100_m2_c = 0),
+en un una casa que no tiene 2 pisos, la predicción es de 1.3 miles de dólares por m2.
+- El coeficiente de *calidad*: dejando fijo *tiene_piso_2* y tamaño, la predicción de precio por m2 aumenta
+en 136 dólares adicionales por cada punto que sube la calidad.
+- El coeficiente de *tiene_piso_2*: dejando constante la calidad y el tamaño, la predicción de precio por m2
+baja en 350 dólares si la casa tiene 2 pisos en lugar de 1.
+- El coeficiente de *habitable_100_m2_c*: dejando constante la calidad y el número de pisos, 
+la predicción de precio por m2 baja en 270 dólares por cada 100 m2 adicionales de tamaño de la casa.
 
 Así podemos explicar cada predicción - considerando qué variables aportan positiva y cuáles
 negativamente a la predicción, cuando mantenemos el resto constante. 
@@ -927,66 +910,30 @@ una revisión de la especificación correcta del modelo. Parte de estos
 cuidados se estudian en un curso de regresión desde el punto de vista
 estadístico, por ejemplo:
 
-- La interpretación coeficiente a coeficiente no toma en cuenta la estructura
-de asociación de las $x's$. Rara vez *cambios marginales* en una variable 
-de entrada ocurren
-de manera independiente de las otras variables de entrada.
 
-- Variación muestral. Es necesario considerar la variación en nuestras estimaciones
+- Variación muestral. Es necesario en primer lugar 
+considerar la variación en nuestras estimaciones
 de los coeficientes para poder concluir acerca de su relación con el fenómeno (tratable desde punto de vista estadístico, pero hay que checar supuestos). 
 
-- Efectos no lineales: si la estructura del problema es altamente no lineal,
+- Efectos no lineales (especificación incorrecta del modelo): si la 
+estructura del problema es altamente no lineal,
 los coeficientes de un modelo lineal no tienen una interpretación clara en relación 
 al fenómeno. 
 
-#### Ejemplo: ¿todo lo demás constante? {-}
+- La interpretación coeficiente a coeficiente no toma en cuenta la estructura
+de asociación de las $x's$. Rara vez *cambios marginales* en una variable 
+de entrada ocurren
+de manera independiente de las otras variables de entrada. Eso hace difícil de interpretar
+los coeficientes.
 
-Consideramos un ejemplo donde el ruido es bajo y la relación
-lineal entre $y$ y sus covariables es casi determinística:
+Otros cuidados adicionales, aún más sutiles e importantes, se requieren si queremos hacer 
+afirmaciones causales: ¿qué pasaría si diseñáramos una intervención para cambiar una característica de las 
+unidades¿ ¿qué nos dice modelos acerca del cambio en la variable respuesta?
 
-```{r}
-respuesta <- function(x_1, x_2){
-    1 + 2*x_1 + 2*x_2 +  10 * exp(-(x_1/0.2)^2 -((x_2 +1)/0.2)^2)
-}
-df <- tibble(x_1 = seq(-2, 2, 0.005)) %>% 
-    mutate(x_2 = abs(x_1) - 2 + rnorm(length(x_1), 0, 0.1), 
-        y = respuesta(x_1, x_2) + rnorm(length(x_1), 0, 0.01))
-summary(lm(y ~ x_1 + x_2, data = df) )
-```
-Claramente recuperamos los coeficientes reales con este ejemplo.
+- Variables omitidas: si nos faltan algunas variables cruciales en el fenómeno que nos
+interesa, o el modelo sufre de otro tipo de especificación incorrecta ,
+puede ser muy difícil interpretar los coeficientes en términos del fenómeno. Por ejemplo:
 
-Ahora supongamos que hacemos la pregunta: ¿Cómo cambia la predicción
-cuando el valor de $x_1$ aumenta en una unidad? Por el coeficiente,
-sabemos que es 2 unidades. Sin embargo, esto no  necesariamente tiene nada qué
-ver con lo que pasaría si manipuláramos individualmente esa
-variable para aumentarla en una unidad:
-
-Cuando hacemos el cambio propuesto (excepto por uno muy pequeño),
-rápidamente pasamos a una zona donde no hay datos, y nuestra
-estimación acaba siendo una extrapolación no soportada por los 
-datos.
-
-```{r}
-respuesta(-1 + 1, -1) - respuesta(-1,-1)
-```
-
-```{r, fig.width=4, fig.asp=0.7}
-df_punto <- tibble(x_1 = c(-1, -0.0), x_2 = c(-1, -1))
-ggplot(df, aes(x_1, x_2)) + geom_point() +
-    geom_point(data = df_punto, col = "red", size = 3) +
-    geom_segment(data = tibble(x=-1, y=-1, xend = -0.0, yend=-1),
-                 aes(x=x,y=y,xend=xend,yend=yend), colour = 'red')
-```
-
-Esta extrapolación es fácil de descubrir en este ejemplo, pero es
-mucho más difícil de detectar en dimensión alta (muchas variables
-de entrada).
-
-Otros cuidados adicionales, aún más sutiles e importantes, se requieren si queremos hacer afirmaciones causales:
-
-- Variables omitidas: si faltan algunas variables cruciales en el fenómeno que nos
-interesa, puede ser muy difícil interpretar el resto de los coeficientes en términos 
-del fenómeno.
 
 #### Ejemplo: ¿interpretación causal? {-}
 
@@ -1073,19 +1020,17 @@ razonables es necesario hacer ejercicios de modelación más delicados (como la 
 este modelo todavía requiere trabajo, ¿cómo podríamos mejorarlo?):
 
 ```{r, message = FALSE}
-modelo_casas <- lm(precio_miles ~ habitable_100_m2 + calidad_m2 + GarageArea +
-                       BsmtFinSF1,
-                   data = casas_ent, weights = 1 / habitable_100_m2^2)
+modelo_casas <- lm(precio_m2_miles ~ calidad + tiene_piso_2, data = casas_ent)
 preds_val <- predict(modelo_casas, newdata = casas_val, interval = "prediction",
-                     level = 0.95,
-                     weights = 1 / casas_val$habitable_100_m2^2)
-valida_g <- bind_cols(preds_val %>% as_tibble, casas_val %>% select(precio_miles))
+                     level = 0.95)
+preds_val_precio <- preds_val * casas_val$habitable_m2
+valida_g <- bind_cols(preds_val_precio %>% as_tibble, casas_val %>% select(precio_miles))
 head(valida_g)
 ggplot(valida_g, aes(x = fit, ymin = lwr, ymax = upr)) +
     geom_linerange(colour = "gray") +
     geom_point(aes(y = precio_miles, x = fit), colour = "red")
 valida_g %>% mutate(cubre = precio_miles > lwr & precio_miles < upr) %>% 
-    summarise(cobertura = mean(cubre), ee = sqrt(mean(cubre)*mean(1-cubre)/n()))
+    summarise(cobertura = mean(cubre), ee = sqrt(mean(cubre) * mean(1 - cubre) / n()))
 ```
 
 
