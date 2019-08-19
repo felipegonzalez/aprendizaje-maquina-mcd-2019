@@ -34,7 +34,7 @@ Por ejemplo, después de un análisis estimamos que
 
 - $\hat{\beta}_0 = 1000000$ (ventas base, si observamos tráficos igual a 0: es lo que va a atraer la tienda)
 - $\hat{\beta}_1 = (200)*0.02 = 4$ (capturamos 2\% del tráfico peatonal, y cada capturado gasta 200 pesos)
-- $\hat{\beta}_2 = (300)*0.01 =3$ (capturamos 2\% del tráfico peatonal, y cada capturado gasta 400 pesos)
+- $\hat{\beta}_2 = (300)*0.01 =3$ (capturamos 1\% del tráfico de autos, y cada capturado gasta 300 pesos)
 Entonces haríamos predicciones con
 $$\hat{f}(peatones, coches) = 1000000 +  4\,peatones + 3\, coches.$$
 El modelo lineal es más flexible de lo que parece en una primera aproximación, porque
