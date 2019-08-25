@@ -616,5 +616,7 @@ betas <- betas %>%
 graf_1 + geom_line(data = betas, aes(x = x, y = p_1)) + facet_wrap(~fun_nom) 
 ```
 
+Experimenta con otros valores de $\beta_0$ y $\beta_1$.
+
 
 
