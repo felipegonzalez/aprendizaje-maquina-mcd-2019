@@ -54,9 +54,12 @@ si el crédito total es mayor al 50\% del ingreso anual, declinar el préstamo, 
  construidas "a mano":
 
 - Cuando conjuntos de reglas creadas a mano se desempeñan mal (por ejemplo, para otorgar créditos, reconocer caracteres, etc.)
+
 - Reglas creadas a mano pueden ser difíciles de mantener (por ejemplo, un corrector
 ortográfico), pues para problemas interesantes muchas veces se requieren grandes
-cantidades de reglas.
+cantidades de reglas. Por ejemplo: ¿qué búsquedas www se enfocan en
+dar direcciones como resultados? ¿cómo filtrar comentarios no aceptables
+en foros?
 
 
 ## Ejemplo: reglas y aprendizaje
@@ -157,8 +160,7 @@ angulos_tbl <- tibble(t = 1:num_cuadros, angulo = angulos)
 library(gganimate)
 ggplot(angulos_tbl, aes(x = t, y = angulo)) +
     geom_line() +
-    transition_reveal(t) +
-    transition_time(0.5)
+    transition_reveal(t) 
 ```
 
 
@@ -254,13 +256,14 @@ sample_n(dat_ingreso, 10) %>%
     knitr::kable()
 ```
 
+Estos son algunos percentiles sobre toda la muestra:
+
 ```{r, fig.width=5, fig.asp=0.7}
-print("Percentiles de ingreso (miles de pesos)")
 quantile(dat_ingreso$ingreso_miles, probs= c(0.05, 0.10,0.5,0.9, 0.95)) %>% round(2)
 ```
 
-Quizá podemos usar otras variables más fácilmente medibles
-para predecir el ingreso de un hogar. Por ejemplo, podríamos
+Quizá podemos usar otras variables **más fácilmente medibles
+para predecir el ingreso de un hogar**. Por ejemplo, podríamos
 considerar variables de entorno (marginación del municipio),
 del hogar (si tienen celular), y de las personas dentro del
 hogar (número de personas ocupadas):
@@ -413,7 +416,7 @@ Entonces podríamos obtener, por ejemplo:
 ```{r, fig.width=5, fig.asp=0.7}
 x_g <- seq(0,20,0.5)
 y_g <- f(x_g)
-dat_g <- data.frame(x = x_g, y = y_g)
+dat_g <- tibble(x = x_g, y = y_g)
 set.seed(281)
 error <- rnorm(length(x), 0, 500)
 y <- f(x) + error
@@ -434,7 +437,7 @@ en (para otra muestra de personas, por ejemplo):
 set.seed(28015)
 error <- rnorm(length(x), 0, 500)
 y <- f(x) + error
-datos <- data.frame(x = x, y = y)
+datos <- tibble(x = x, y = y)
 ggplot(datos, aes(x = x, y = y)) + geom_point() 
 ```
 
@@ -585,7 +588,7 @@ En aprendizaje supervisado,
 
 - Usando datos de entrenamiento ${\mathcal L}$, construimos una funcion $\hat{f}$ para predecir
 - Si observamos nuevos valores $x_0$, nuestra predicción es $\hat{y} = \hat{f}(x_0)$.
-- Buscamos que cuando observemos nuevos casos para predecir, nuestro error de predicción
+- Buscamos que cuando observemos **nuevos** casos para predecir, nuestro error de predicción
 sea bajo en promedio ($Err$ sea bajo)
 - Usualmente estimamos $Err$ mediante una muestra de prueba o validación ${\mathcal T}$, así
 que buscamos minimizar la estimación $\hat{Err}$
@@ -601,8 +604,8 @@ para construir $\hat{f}$, mientras que el error de predicción se estima usando
 una muestra independiente ${\mathcal T}$.
 - $\hat{Err}$ es una estimación razonable de el error de predicción $Err$ 
 (por ejemplo, $\hat{Err} \to Err$ cuando el tamaño de la muestra de prueba
-crece), pero $\overline{err}$ típicamente es una estimación mala del error de
-predicción.
+crece), pero $\overline{err}$ típicamente es **una estimación mala del error de
+predicción**.
 
 #### Ejemplo {-}
 
@@ -613,14 +616,14 @@ predecir, la gris, la roja o la azul? ¿Cuál tiene menor error de entrenamiento
 set.seed(280572)
 error <- rnorm(length(x), 0, 500)
 y <- f(x) + error
-datos_entrena <- data.frame(x=x, y=y)
+datos_entrena <- data.frame(x = x, y = y)
 head(datos_entrena)
-curva_1 <- geom_smooth(data=datos_entrena,
-  method = "loess", se=FALSE, color="gray", span=1, size=1.1)
-curva_2 <- geom_smooth(data=datos_entrena,
-  method = "loess", se=FALSE, color="red", span=0.5, size=1.1)
-curva_3 <- geom_smooth(data=datos_entrena,
-  method = "lm", se=FALSE, color="blue", size=1.1)
+curva_1 <- geom_smooth(data = datos_entrena,
+  method = "loess", se = FALSE, color = "gray", span = 1, size = 1.1)
+curva_2 <- geom_smooth(data = datos_entrena,
+  method = "loess", se = FALSE, color = "red", span = 0.5, size = 1.1)
+curva_3 <- geom_smooth(data = datos_entrena,
+  method = "lm", se = FALSE, color = "blue", size = 1.1)
 ```
 
 ```{r, fig.width=5, fig.asp=0.7, warning = FALSE}
@@ -635,7 +638,7 @@ Calculamos los errores de entrenamiento de cada curva:
 mod_rojo <- loess(y ~ x, data = datos_entrena, span=0.3)
 mod_gris <- loess(y ~ x, data = datos_entrena, span=1)
 mod_recta <- lm(y ~ x, data = datos_entrena)
-df_mods <- tibble(nombre = c('recta', 'rojo','gris'))
+df_mods <- tibble(nombre = c('recta', 'rojo', 'gris'))
 df_mods$modelo <- list(mod_recta, mod_rojo, mod_gris)
 ```
 
@@ -770,16 +773,18 @@ datos que tenemos.
 Para construir buenos predictores, requerimos que:
 
 - El algoritmo tenga la **flexibilidad** necesaria para capturar patrones generales y
-fuertes en los datos
+fuertes en los datos.
 - El algoritmo tenga la **rigidez** necesaria para tener robustez a patrones de ruido
 o particularidades no repetibles de nuestra muestra de entrenamiento.
+- El algoritmo es apropiado para el problema: dependiendo de estructura conocida que
+incluyamos en el modelo, el balance de flexibilidad y rigidez es diferente.
 - Saber intuitivamente cuál es el grado adecuado de complejidad para un problema
 dado es difícil. Para decidirlo, evaluamos el desempeño de nuestros métodos
 usando una **muestra de prueba**. El nivel adecuado de complejidad se traduce
 en menos error de predicción.
 ```
 
-#### Discusión (error de entrenamiento y prueba)
+#### Discusión (error de entrenamiento y prueba) {-}
 
 En términos teóricos, podemos ver cuál es el problema de intentar evaluar el
 error de predicción utilizando la muestra de entrenamiento. 
@@ -845,6 +850,40 @@ utilizar en distintos casos, qué modificaciones de la función objetivo pueden 
 mejorar el proceso de entrenamiento,
 y qué perturbaciones de los datos pueden considerarse para mejorar el desempeño predictivo de
 nuestros modelos.
+
+## Qué cosas no veremos en este curso
+
+En este curso nos concentraremos en la construcción, evaluación y mejora de 
+modelos predictivos. Para que estas ideas funcionen en problemas reales, hay
+más aspectos a considerar que no discutiremos con detalle (y muchas veces son
+considerablemente más difíciles de la teoría y los algoritmos):
+
+- La aplicación de aprendizaje de máquina requiere, en primer lugar, de que los
+**datos correctos** sean identificados y capturados. Esto en muchos casos requiere esfuerzos
+concentrados en esta dirección y típicamente no sucede sino hasta cuando comenzamos
+el trabajo de construir modelos predictivos (o al menos el trabajo de construir
+conjuntos de reglas). 
+
+- Para entender exactamente cuál es **el problema** que queremos resolver
+se requiere trabajo analítico considerable, y también trabajo en entender
+aspectos del negocio/área donde nos interesa usar aprendizaje máquina. Muchas
+veces es fácil resolver un problema muy preciso, que tenemos a la mano,
+pero que más adelante nos damos cuenta de que no es útil.
+
+- Estos dos puntos incluyen indentificar las **métricas** que queremos mejorar,
+lo cual no siempre se claro. Optimizar métricas incorrectas es poco útil en el
+mejor de los casos, y en los peores pueden causar daños. Evitar esto requiere
+monitoreo constante de varios aspectos del funcionamiento de nuestros modelos y sus
+consecuencias.
+
+- ¿Cómo poner en **producción** modelos y mantenerlos? Un flujo apropiado de trabajo,
+y de entrenamiento continuo puede ser la diferencia entre entre un modelo exitoso o uno
+que se vuelve fuente de dificultades y confusión.
+
+- ¿Cuáles son los **sesgos** peligrosos o injustos de los modelos? ¿Podemos caer
+en círculos viciosos donde aprendemos cosas que al poner en producción amplifican situaciones 
+injustas?
+
 
 ## Resumen
 

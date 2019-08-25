@@ -1,0 +1,85 @@
+---
+title: "Tarea 1"
+output: html_document
+---
+
+En este ejercicio haremos varias simulaciones del ejemplo
+de las curvas gris, roja y azul que vimos en clase. Puedes fijar
+la muestra de prueba (relativamente grande). Simula al menos
+10 muestras de entrenamiento diferentes (con la misma x fija)
+y compara los errores que obtienes (entrenamiento y prueba).
+**¿Cuál es el método que escogerías para este problema?**. Pregunta
+extra: puede ser que observes algunas advertencias al ajustar
+los modelos, ¿de dónde provienen?
+
+
+Puedes utilizar el siguiente código auxiliar tomado de las notas de clase
+(o escribe tu propio código: hay muchas maneras diferentes de hacer esto):
+
+### Funciones auxiliares:
+
+```{r, message=FALSE}
+library(tidyverse)
+simula_muestra <- function(f, x) {
+  # devuelve datos simulados 
+  error <- rnorm(length(x), 0, 500)
+  y <- f(x) + error
+  datos <- tibble(x = x, y = y)
+  datos
+}
+
+ajusta_modelos <- function(datos_entrena){
+  # la salida es una lista con los modelos ajustados
+  # opcionalmente, puedes cambiar el suavizamiento 
+  mod_rojo <- loess(y ~ x, data = datos_entrena, span=0.3)
+  mod_gris <- loess(y ~ x, data = datos_entrena, span=1)
+  mod_recta <- lm(y ~ x, data = datos_entrena)
+  df_mods <- tibble(nombre = c('recta', 'rojo', 'gris'))
+  df_mods$modelo <- list(mod_recta, mod_rojo, mod_gris)
+  df_mods
+}
+
+
+error_f <- function(df){
+  function(mod){
+    preds <- predict(mod, newdata = df)
+    round(sqrt(mean((preds - df$y) ^ 2)))
+  }
+}
+
+calcula_error <- function(df_modelos, datos){
+  error <- error_f(datos)
+  df_modelos <- df_modelos %>% 
+    mutate(error_prueba = map_dbl(modelo, error))
+  df_modelos
+}
+
+f <- function(x){
+  ifelse(x < 10, 1000*sqrt(x), 1000*sqrt(10))
+}
+```
+
+### Simulación
+
+Ahora fijamos la x y una muestra de prueba:
+
+```{r}
+x_0 <- sample(0:13, 500, replace = T)
+datos_prueba <- simula_muestra(f, x_0)
+# usamos x fija para entrenamiento (puedes simular también)
+x <- c(1,7,10,0,0,5,9,13,2,4,17,18,1,2)
+```
+
+Y este es el resultado de una corrida (replica esto varias veces y haz gráficas para
+comparar errores):
+
+```{r, warning = FALSE}
+datos_entrena <- simula_muestra(f, x)
+modelos <- ajusta_modelos(datos_entrena)
+error_entrena <- error_f(datos_entrena)
+error_prueba <- error_f(datos_prueba)
+modelos %>% 
+  mutate(error_ent = map_dbl(modelo, error_entrena),
+         error_pr = map_dbl(modelo, error_prueba))
+
+```
