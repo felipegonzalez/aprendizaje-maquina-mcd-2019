@@ -24,7 +24,7 @@ $X_3=$ edad, etc
 
 - En nuestro ejemplo de 
 reconocimiento de dígitos tenemos $G\in\{ 0,1,\ldots, 9\}$. Nótese
-que los` dígitos no se pueden considerar como valores numéricos (son etiquetas).
+que los dígitos no se pueden considerar como valores numéricos (son etiquetas).
 Tenemos que las entradas $X_j$ para $j=1,2,\ldots, 256$ son valores de cada pixel
 (imágenes blanco y negro).
 - En reconocimiento de imágenes quiza tenemos que $G$ pertenece a un conjunto
@@ -53,7 +53,7 @@ nos da cierta información probabilística acerca de las clases que pueden ocurr
 (depende de otras variables que no conocemos).
 En analogía con el problema de regresión, quisiéramos estimar las probabilidades condicionales $P(G|X)$, que es la parte sistemática de la relación de $G$ en función de $X$.
 Normalmente codificamos las clases $g$ con una etiqueta numérica, de modo
-que $G\in\{0,1,\ldots, K\}$:
+que $G\in\{0,1,\ldots, K-1\}$:
 
 #### Ejemplo {-}
 (Impago de tarjetas de crédito) 
@@ -74,10 +74,10 @@ En problemas de clasificación queremos estimar la parte
 sistemática de la relación de $G$ en función $X$, que en este caso quiere
 decir que buscamos estimar las probabilidades condicionales:
 \begin{align*}
+p_0(x) &= P(G=0|X=x), \\
 p_1(x) &= P(G=1|X=x), \\
-p_2(x) &= P(G=2|X=x), \\
 \vdots &  \\
-p_K(x) &= P(G=K|X=x)
+p_{K-1}(x) &= P(G=K-1|X=x)
 \end{align*}
  para cada valor $x$ de las entradas.
 ```
@@ -88,7 +88,7 @@ forma más simple es usando el clasificador de Bayes:
 
 
 ```{block2, type = 'comentario'}
-Dadas las probabilidades condicionales $p_0(x),p_1(x),p_2(x),\ldots, p_K(x)$, el 
+Dadas las probabilidades condicionales $p_0(x),p_1(x),p_2(x),\ldots, p_{K-1}(x)$, el 
 **clasificador de Bayes** asociado está dado por
 $$G (x) = \arg\max_{g} p_g(x)$$
 Es decir, clasificamos en la clase que tiene máxima probabilidad de ocurrir.
@@ -100,7 +100,7 @@ Es decir, clasificamos en la clase que tiene máxima probabilidad de ocurrir.
 
 #### Ejemplo {-}
 (Impago de tarjetas de crédito) 
-Supongamos que $X=$ porcentaje del crédito máximo usado, y $G\in\{1, 2\}$, donde
+Supongamos que $X=$ porcentaje del crédito máximo usado, y $G\in\{0, 1\}$, donde
 $1$ corresponde al corriente y $0$ representa impago.
  Las probabilidades condicionales de clase para la clase *al corriente* podrían
  ser, por ejemplo:
@@ -117,7 +117,8 @@ a las no condicionadas, por ejempo, podríamos tener que a total $P(G=1)=0.83$.
 p_1 <- function(x){
   ifelse(x < 0.15, 0.95, 0.95 - 0.7 * (x - 0.15))
 }
-ggplot(tibble(x = seq(0, 1, 0.01)), aes(x = x)) + stat_function(fun = p_1)  +
+ggplot(tibble(x = seq(0, 1, 0.01)), aes(x = x)) + 
+    stat_function(fun = p_1)  +
     ylab("p_1")
 ```
 
@@ -125,8 +126,8 @@ ggplot(tibble(x = seq(0, 1, 0.01)), aes(x = x)) + stat_function(fun = p_1)  +
 
 Si usamos el clasificador de Bayes, tendríamos por ejemplo que
 si $X=10\%$, como $p_1(10\%) = 0.95$ y $p_0(10\%)=0.05$, nuestra predicción
-de clase sería $G(10\%) = 1$ (al corriente), pero si $X=70\%$,
-$G(70\%) = 1$ (impago), pues $p_1(70\%) = 0.57$ y $p_0(70\%) = 0.43$.
+de clase sería $\hat{G}(10\%) = 1$ (al corriente), pero si $X=70\%$,
+$\hat{G}(70\%) = 1$ (impago), pues $p_1(70\%) = 0.57$ y $p_0(70\%) = 0.43$.
 
 
 
@@ -135,8 +136,6 @@ $G(70\%) = 1$ (impago), pues $p_1(70\%) = 0.57$ y $p_0(70\%) = 0.43$.
 ¿Cómo estimamos ahora las probabilidades de clase a partir de una
 muestra de entrenamiento? Veremos por ahora
 dos métodos: k-vecinos más cercanos y regresión logística. 
-
-
 
 
 ### Ejemplo {-}
@@ -154,8 +153,8 @@ simular_impago <- function(n = 500){
     # las probabilidades de estar al corriente:
     probs <- p_1(x)
     # finalmente, simulamos cuáles clientes siguen en al corriente y cuales no:
-    g <- ifelse(rbinom(length(x), 1, probs) == 1 ,1, 0)
-    dat_ent <- tibble(x = x, p_1 = probs, g = factor(g))
+    g <- ifelse(rbinom(length(x), 1, probs) == 1 , 1, 0)
+    dat_ent <- tibble(x = x, p_1 = probs, g = g)
     dat_ent
 }
 set.seed(1933)
@@ -168,8 +167,9 @@ variación artificial para evitar traslape de los puntos):
 
 ```{r, fig.width = 5, fig.asp = 0.7}
 graf_1 <- ggplot(dat_ent, aes(x = x)) +
-  geom_jitter(aes(colour = factor(g), y = as.numeric(g=='1')), 
-    width=0.02, height=0.05) + ylab("") + labs(colour = "Clase")
+  geom_jitter(aes(colour = factor(g), y = g), 
+    width=0.0, height=0.1) + ylab("") + 
+    labs(colour = "Clase")
 graf_1 
 ```
 
@@ -221,8 +221,8 @@ más cercanos (curva roja):
 
 ```{r,fig.width = 5, fig.asp = 0.7}
 graf_data <- data_frame(x = seq(0, 1, 0.01))
-vmc <- kknn(g ~ x, train = dat_ent,  k = 60,
-              test = graf_data)
+# convertir g a factor para usar clasificación
+vmc <- kknn(factor(g) ~ x, train = dat_ent,  k = 60, test = graf_data)
 graf_data$p_1 <- vmc$prob[ ,2]
 graf_verdadero <- tibble(x = seq(0, 1, 0.01), p_1 = p_1(x))
 graf_1 + 
@@ -236,8 +236,8 @@ estimación, pues no vamos a tener la curva negra real para comparar.
 
 ```{block, type='comentario'}
 Arriba denotamos las probabilidades teóricas como
-$p_1 (x), p_2 (x), \ldots, p_K (x)$. Denotamos probabilidades estimadas
-como $\hat{p}_1 (x), \hat{p}_2 (x), \ldots, \hat{p}_K (x)$
+$p_0 (x), p_1 (x), \ldots, p_{K-1} (x)$. Denotamos probabilidades estimadas
+como $\hat{p}_0 (x), \hat{p}_1 (x), \ldots, \hat{p}_{K-1} (x)$
 ```
 
 
@@ -267,15 +267,15 @@ Intentaremos predecir diabetes dependiendo del BMI:
 ```{r, fig.width=5, fig.asp=0.7}
 library(ggplot2)
 ggplot(diabetes_ent, aes(x = bmi, y= as.numeric(type=='Yes'), colour = type)) +
-  geom_point()
+  geom_jitter(height = 0.05)
 ```
 
-Usamos $20$ vecinos más cercanos para estimar $p_g(x)$:
+Usamos $30$ vecinos más cercanos para estimar $p_g(x)$:
 
 
 ```{r, fig.width=5, fig.asp=0.7}
 graf_data <- data_frame(bmi = seq(20, 45, 1))
-vmc_5 <- kknn(type ~ bmi, train = diabetes_ent,  k = 20,
+vmc_5 <- kknn(type ~ bmi, train = diabetes_ent,  k = 30,
               test = graf_data, kernel = 'rectangular')
 graf_data$Yes <- vmc_5$prob[ ,"Yes"]
 graf_data$No <- vmc_5$prob[ ,"No"]
@@ -291,7 +291,7 @@ ggplot(diabetes_ent, aes(x = bmi, y = as.numeric(type == 'Yes'),
 
 ## Error para modelos de clasificación
 
-En regresión, vimos que la pérdida cuadrática era una buena opción para ajustar
+En regresión, vimos que la pérdida cuadrática era una opción razonable para ajustar
 modelos (descenso en gradiente, por ejemplo), y también para evaluar su desempeño.
 Ahora necesitamos una pérdida apropiada para trabajar con modelos de clasificación.
 
