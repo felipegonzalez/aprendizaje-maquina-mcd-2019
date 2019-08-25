@@ -9,7 +9,6 @@
 
 library(shiny)
 library(tidyverse)
-
 simular_impago <- function(n = 500){
     # suponemos que los valores de x están concentrados en valores bajos,
     # quizá la manera en que los créditos son otorgados
@@ -34,7 +33,6 @@ devianza <- function(p, g) {
 
 set.seed(1933)
 dat_ent  <- simular_impago() %>% select(x, g) 
-dat_ent %>% sample_n(20)
 df_grid <- tibble(x = seq(0, 1, 0.01))
 
 graf_1 <- ggplot(dat_ent, aes(x = x)) +
@@ -85,7 +83,7 @@ server <- function(input, output) {
             mutate(devianza = devianza(prob_est, g)) %>% 
             summarise(devianza_ent = mean(devianza))
         dev_ent
-    })
+    }, digits = 3)
 }
 
 # Run the application 
