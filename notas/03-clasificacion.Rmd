@@ -275,8 +275,8 @@ Usamos $30$ vecinos más cercanos para estimar $p_g(x)$:
 
 ```{r, fig.width=5, fig.asp=0.7}
 graf_data <- data_frame(bmi = seq(20, 45, 1))
-vmc_5 <- kknn(type ~ bmi, train = diabetes_ent,  k = 30,
-              test = graf_data, kernel = 'rectangular')
+vmc_5 <- kknn(type ~ bmi, 
+              train = diabetes_ent,  k = 30, test = graf_data, kernel = 'rectangular')
 graf_data$Yes <- vmc_5$prob[ ,"Yes"]
 graf_data$No <- vmc_5$prob[ ,"No"]
 graf_data <- graf_data %>% gather(type, prob, Yes:No)
@@ -320,10 +320,10 @@ y que cumpla con los puntos arriba señalados. Entonces tenemos que
 - $s(p)$ debe ser muy grande is $p$ es muy chica.
 
 Una opción analíticamente conveniente es
-$$s(p) = - 2log(p)$$
+$$s(p) = - 2\log(p)$$
 
 ```{r, fig.width=5, fig.asp=0.7}
-s <- function(z){ -2*log(z)}
+s <- function(z){ -2*log(z) }
 ggplot(data_frame(p = (0:100)/100), aes(x = p)) + 
     stat_function(fun = s) + ylab("Devianza")
 ```
@@ -333,7 +333,7 @@ Y entonces la pérdida (que llamamos **devianza**) que construimos está dada, p
 $(x,g)$ observado y probabilidades estimadas $\hat{p}_g(x)$ por
 
 $$
-- 2\log(\hat{p}_g(x))
+- 2 \log(\hat{p}_g(x))
 $$
 
 donde $\hat{p}(x)$ es la probabilidad estimada de nuestro modelo.
@@ -346,7 +346,7 @@ de manera diferente en distintos lugares (pero para cosas similares). En muchos 
 
 - Una razón importante para usar la devianza como el objetivo a minimizar es que resulta en una estimación de máxima verosimilitud para los parámetros (condicional a las x's), como veremos más adelante.
 
-- No es fácil interpretar la devianza, pero es útil para comparar modelos. Veremos otras medidas más fáciles de intrepretar más adelante.
+- No es fácil interpretar la devianza, pero es útil para ajustar y comparar modelos. Veremos otras medidas más fáciles de intrepretar más adelante.
 
 
 Compara la siguiente definición con la que vimos para modelos de regresión:
@@ -355,7 +355,7 @@ Compara la siguiente definición con la que vimos para modelos de regresión:
 Sea $${\mathcal L}=\{ (x^{(1)},g^{(1)}),(x^{(2)},g^{(2)}), \ldots, (x^{(N)}, g^{(N)}) \}$$
 una muestra de entrenamiento, a partir de las cuales construimos mediante
 un algoritmo  funciones estimadas
-$\hat{p}_{g} (x)$ para $g=1,2,\ldots, K$. La **devianza promedio de entrenamiento** 
+$\hat{p}_{g} (x)$ para $g=0,1,\ldots, K-1$. La **devianza promedio de entrenamiento** 
 está dada por
 \begin{equation}
 \overline{err} = - \frac{2}{N}\sum_{i=1}^N log(\hat{p}_{g^{(i)}} (x^{(i)}))
@@ -377,12 +377,12 @@ calculamos la devianza de entrenamiento
 
 ```{r}
 s <- function(x) -2*log(x)
-vmc_entrena <- kknn(g ~ x, train = dat_ent,  k = 60,
+vmc_entrena <- kknn(factor(g) ~ x, train = dat_ent,  k = 60,
               test = dat_ent, kernel = 'rectangular')
-dat_dev <- dat_ent %>% select(x,g)
-dat_dev$hat_p_1 <- predict(vmc_entrena, type ='prob')[ ,2]
-dat_dev$hat_p_2 <- predict(vmc_entrena, type ='prob')[ ,1]
-dat_dev <- dat_dev %>% mutate(hat_p_g = ifelse(g==1, hat_p_1, hat_p_2))
+dat_dev <- dat_ent %>% select(x,g) %>% 
+    bind_cols(as_tibble(predict(vmc_entrena, type ='prob'))) %>% 
+    rename(hat_p_0 = `0`, hat_p_1 = `1`)
+dat_dev <- dat_dev %>% mutate(hat_p_g = ifelse(g==1, hat_p_1, hat_p_0))
 ```
 
 Nótese que dependiendo de qué clase observamos (columna $g$), extraemos la
@@ -407,12 +407,12 @@ desempeño del modelo. Hagamos el cálculo entonces para una muestra de prueba:
 ```{r}
 set.seed(1213)
 dat_prueba <- simular_impago(n = 1000) %>% select(x, g)
-vmc_prueba <- kknn(g ~ x, train = dat_ent,  k = 60,
+vmc_prueba <- kknn(factor(g) ~ x, train = dat_ent,  k = 60,
               test = dat_prueba, kernel = 'rectangular')
-dat_dev_prueba <- dat_prueba %>% select(x,g)
-dat_dev_prueba$hat_p_1 <- predict(vmc_prueba, type ='prob')[,2]
-dat_dev_prueba$hat_p_2 <- predict(vmc_prueba, type ='prob')[,1]
-dat_dev_prueba <- dat_dev_prueba %>% mutate(hat_p_g = ifelse(g==1, hat_p_1, hat_p_2))
+dat_dev_prueba <- dat_prueba %>% select(x,g)%>% 
+    bind_cols(as_tibble(predict(vmc_prueba, type ='prob'))) %>% 
+    rename(hat_p_0 = `0`, hat_p_1 = `1`) 
+dat_dev_prueba <- dat_dev_prueba %>% mutate(hat_p_g = ifelse(g==1, hat_p_1, hat_p_0))
 dat_dev_prueba <- dat_dev_prueba %>% mutate(dev = s(hat_p_g))
 dat_dev_prueba %>% ungroup %>% summarise(dev_prueba = mean(dev))
 ```
@@ -477,6 +477,19 @@ dat_dev_prueba %>% mutate(correcto = hat_G == g) %>%
   ungroup %>% summarise(p_correctos = mean(correcto)) %>%
   mutate(error_clasif = 1 - p_correctos)
 ```
+
+**Observación**: la tasa de correctos, para una gran cantidad de problemas,
+es una medida pobre del desempeño de un modelo (veremos los detalles más adelante).
+Es mejor utilizar medidas que usen de mejor manera las probabilidades estimadas
+por nuestro modelo. Además de la devianza, otra medida útil, por ejemplo, es el 
+*score de Brier*, que quizá es más fácil de entender. En el caso de problemas
+de clasificación binaria (0-1), es score de Brier sobre la muestra $\mathcal L$ es
+
+$$b = \frac{1}{N}\sum_{(x,g) \in \mathcal L} (\hat{p}_1(x) - g)^2,$$
+
+donde $g$ toma los valores 0 o 1.
+
+
 
 ### Discusión: relación entre devianza y error de clasificación
 
