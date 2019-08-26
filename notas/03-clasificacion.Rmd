@@ -766,7 +766,8 @@ Y hacemos descenso:
 iteraciones <- descenso(200, z_0 = c(0,0), eta = 0.1, h_deriv = grad)
 tail(iteraciones, 20)
 #Checamos devianza
-plot(apply(iteraciones, 1, devianza))
+qplot(1:nrow(iteraciones), apply(iteraciones, 1, devianza)) +
+    xlab("Iteración") + ylab("Devianza")
 # Y gradiente de devianza en la iteración final:
 grad(iteraciones[nrow(iteraciones), ])
 ```
@@ -914,7 +915,7 @@ p <- ncol(x_ent)
 y_ent <- diabetes_ent_s$type == 'Yes'
 grad <- grad_calc(x_ent, y_ent)
 iteraciones <- descenso(1000, rep(0,p+1), 0.1, h_deriv = grad)
-matplot(iteraciones)
+matplot(iteraciones, type = "l")
 ```
 ```{r}
 diabetes_coef <- tibble(variable = c('Intercept',colnames(x_ent)), coef = iteraciones[1000,])
