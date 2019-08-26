@@ -126,8 +126,8 @@ ggplot(tibble(x = seq(0, 1, 0.01)), aes(x = x)) +
 
 Si usamos el clasificador de Bayes, tendríamos por ejemplo que
 si $X=10\%$, como $p_1(10\%) = 0.95$ y $p_0(10\%)=0.05$, nuestra predicción
-de clase sería $\hat{G}(10\%) = 1$ (al corriente), pero si $X=70\%$,
-$\hat{G}(70\%) = 1$ (impago), pues $p_1(70\%) = 0.57$ y $p_0(70\%) = 0.43$.
+de clase sería $\hat{G}(10\%) = 1$ (al corriente), pero si $X=90\%$,
+$\hat{G}(70\%) = 1$ (impago), pues $p_1(70\%) = 0.425$ y $p_0(70\%) = 0.575$.
 
 
 
@@ -642,7 +642,7 @@ $$p_1(x)=p_1(x;\beta)= h(\beta_0+\beta_1x_1 + \beta_2x_2 +\cdots + \beta_p x_p),
 
 y definimos la devianza sobre el conjunto de entrenamiento
 
-$$D(\beta) = -2\sum_{i=1}^N \log(p_{y^{(i)}} (x^{(i)})).$$ 
+$$D(\beta) = -\frac{2}{N}\sum_{i=1}^N \log(p_{y^{(i)}} (x^{(i)})).$$ 
 
 Los **coeficientes estimados por regresión logística** están dados por
 $$\hat{\beta} = \arg\min_\beta D(\beta)$$
@@ -650,7 +650,7 @@ $$\hat{\beta} = \arg\min_\beta D(\beta)$$
 Para minimizar utilizaremos descenso en gradiente (aunque hay más opciones).
 
 La última expresión para $D(\beta)$ puede ser difícil de operar, pero podemos reescribir como:
-$$D(\beta) = -2\sum_{i=1}^N y^{(i)} \log(p_{1} (x^{(i)})) + (1-y^{(i)}) \log(p_{0} (x^{(i)})).$$ 
+$$D(\beta) = -\frac{2}{N}\sum_{i=1}^N y^{(i)} \log(p_{1} (x^{(i)})) + (1-y^{(i)}) \log(p_{0} (x^{(i)})).$$ 
 
 
 Para hacer descenso en gradiente, necesitamos encontrar $\frac{\partial D}{\beta_j}$
@@ -678,14 +678,14 @@ para $j=0,1,\ldots,p$, usando la convención de $x_0^{(i)}=1$. Podemos sumar
 ahora sobre la muestra de entrenamiento para obtener
 
 
-$$ \frac{\partial D}{\partial\beta_j} = - 2\sum_{i=1}^N  (y^{(i)}-p(x^{(i)}))x_j^{(i)}$$
+$$ \frac{\partial D}{\partial\beta_j} = - \frac{2}{N}\sum_{i=1}^N  (y^{(i)}-p(x^{(i)}))x_j^{(i)}$$
 
 De modo que, 
 
 ```{block2, type='comentario'}
 Para un paso $\eta>0$ fijo, la iteración de descenso para regresión logística para
 el coeficiente $\beta_j$ es:
-$$\beta_{j}^{(k+1)} = \beta_j^{(k)} + {2\eta} \sum_{i=1}^N (y^{(i)}-p(x^{(i)}))x_j^{(i)}$$
+$$\beta_{j}^{(k+1)} = \beta_j^{(k)} + {\eta}{\frac{2}{N}} \sum_{i=1}^N (y^{(i)}-p(x^{(i)}))x_j^{(i)}$$
 para 
 $j=0,1,\ldots, p$, donde fijamos $x_0^{(i)}=1$.
 ```
@@ -699,7 +699,7 @@ escribimos la función que calcula la devianza. Podríamos poner:
 devianza_calc_simple <- function(x, y){
   dev_fun <- function(beta){
     p_beta <- h(as.matrix(cbind(1, x)) %*% beta) 
-   -2*sum(y*log(p_beta) + (1-y)*log(1-p_beta))
+   -2*mean(y*log(p_beta) + (1-y)*log(1-p_beta))
   }
   dev_fun
 }
@@ -720,7 +720,7 @@ Así que podemos escribir:
 devianza_calc <- function(x, y){
   dev_fun <- function(beta){
     x_beta <- as.matrix(cbind(1, x)) %*% beta
-   -2*sum(y*x_beta - log(1 + exp(x_beta)))
+   -2 * mean(y * x_beta - log(1 + exp(x_beta)))
   }
   dev_fun
 }
@@ -728,9 +728,10 @@ devianza_calc <- function(x, y){
 ```{r}
 grad_calc <- function(x_ent, y_ent){
   salida_grad <- function(beta){
+    N <- nrow(x_ent)
     p_beta <- h(as.matrix(cbind(1, x_ent)) %*% beta) 
     e <- y_ent - p_beta
-    grad_out <- -2*as.numeric(t(cbind(1,x_ent)) %*% e)
+    grad_out <- - (2 / N) * as.numeric(t(cbind(1,x_ent)) %*% e)
     names(grad_out) <- c('Intercept', colnames(x_ent))
     grad_out
   }
@@ -762,7 +763,7 @@ Verificamos cálculo de gradiente:
 ```
 Y hacemos descenso:
 ```{r, fig.width=5, fig.asp=0.8}
-iteraciones <- descenso(200, z_0 = c(0,0), eta = 0.001, h_deriv = grad)
+iteraciones <- descenso(200, z_0 = c(0,0), eta = 0.1, h_deriv = grad)
 tail(iteraciones, 20)
 #Checamos devianza
 plot(apply(iteraciones, 1, devianza))
@@ -771,14 +772,16 @@ grad(iteraciones[nrow(iteraciones), ])
 ```
 Comparamos con glm:
 ```{r}
-mod_1 <- glm(y~x_s, data=dat_ent, family = 'binomial') 
+mod_1 <- glm(y ~ x_s, data = dat_ent, family = 'binomial') 
 coef(mod_1)
 mod_1$deviance
 devianza(iteraciones[200,])
 ```
-Nótese que esta devianza está calculada sin dividir entre el número de casos. Podemos calcular la devianza promedio de entrenamiento haciendo:
+
+La devianza que obtenemos con nuestros cálculos es:
+
 ```{r}
-devianza(iteraciones[200,])/nrow(dat_ent)
+devianza(iteraciones[200,])
 ```
 
 #### Máxima verosimilitud {-}
@@ -861,15 +864,15 @@ h(0.5)
 Si todas las variables están en su media, y cambiamos en 1 desviación estándar la
 variable $x_1$, la probabilidad de clase 1 es:
 ```{r}
-h(0.5+0.2)
+h(0.5 + 0.2)
 ```
 Y el cambio en puntos de probabilidad es:
 ```{r}
-h(0.5+0.2) - h(0.5)
+h(0.5 + 0.2) - h(0.5)
 ```
 Pero si la variable $x_2 = -1$, por ejemplo, el cambio en probabilidad es de
 ```{r}
-h(0.5+ 0.2 + 0.5*1) - h(0.5 + 0.5*1)
+h(0.5 + 0.2 - 0.5 * (-1)) - h(0.5 - 0.5 * (-1))
 ```
 ## Ejercicio: datos de diabetes
 
@@ -910,7 +913,7 @@ x_ent <- diabetes_ent_s %>% select(age:skin) %>% as.matrix
 p <- ncol(x_ent)
 y_ent <- diabetes_ent_s$type == 'Yes'
 grad <- grad_calc(x_ent, y_ent)
-iteraciones <- descenso(1000, rep(0,p+1), 0.001, h_deriv = grad)
+iteraciones <- descenso(1000, rep(0,p+1), 0.1, h_deriv = grad)
 matplot(iteraciones)
 ```
 ```{r}
@@ -924,7 +927,7 @@ Ahora calculamos devianza de prueba y error de clasificación:
 x_prueba <- diabetes_pr_s %>% select(age:skin) %>% as.matrix
 y_prueba <- diabetes_pr_s$type == 'Yes'
 dev_prueba <- devianza_calc(x_prueba, y_prueba)
-dev_prueba(iteraciones[1000,])/nrow(x_prueba)
+dev_prueba(iteraciones[1000,])
 ```
 
 Y para el error clasificación de prueba, necesitamos las probabilidades de clase ajustadas:
@@ -1009,7 +1012,6 @@ mod_1 %>% coef
 Para obtener error de entrenamiento
 
 ```{r}
-
 (mod_1$deviance / nrow(diabetes_ent_s)) 
 ```
 
@@ -1069,8 +1071,9 @@ calibracion_gpos <- dat_calibracion %>%
               n = n(),
               obs = sum(y)) %>% 
     mutate(obs_prop = (obs + 1) / (n + 1), 
-           superior = qbeta(0.975, obs + 1,  n - obs + 1),
-           inferior = qbeta(0.025, obs + 1,  n - obs + 1))
+           inferior = qbeta(0.025, obs + 1,  n - obs + 1),
+           superior = qbeta(0.975, obs + 1,  n - obs + 1)
+           )
 calibracion_gpos
 ```
 
