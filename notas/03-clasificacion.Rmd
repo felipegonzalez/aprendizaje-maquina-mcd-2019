@@ -1,0 +1,1067 @@
+# Regresión logística {#logistica}
+
+```{r, include = FALSE}
+library(tidyverse)
+cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+theme_set(theme_minimal())
+```
+
+## El problema de clasificación
+
+Una variabla $G$ **categórica** o **cualitativa** toma valores que no
+son numéricos. Por ejemplo, si $G$ denota el estado del contrato de celular
+de un cliente dentro de un año, podríamos tener $G\in \{ activo, cancelado\}$.
+
+En un **problema de clasificación** buscamos predecir una variable respuesta
+categórica $G$ en función de otras variables de entrada
+$X=(X_1,X_2,\ldots, X_p)$.
+
+#### Ejemplos {-}
+- Predecir si un cliente cae en impago de una tarjeta de crédito, de forma
+que podemos tener $G=corriente$ o $G=impago$. Variables de entrada podrían
+ser $X_1=$ porcentaje de saldo usado, $X_2=$ atrasos en los úlltimos 3 meses,
+$X_3=$ edad, etc
+
+- En nuestro ejemplo de 
+reconocimiento de dígitos tenemos $G\in\{ 0,1,\ldots, 9\}$. Nótese
+que los dígitos no se pueden considerar como valores numéricos (son etiquetas).
+Tenemos que las entradas $X_j$ para $j=1,2,\ldots, 256$ son valores de cada pixel
+(imágenes blanco y negro).
+- En reconocimiento de imágenes quiza tenemos que $G$ pertenece a un conjunto
+que típicamente contiene miles de valores (manzana, árbol, pluma, perro, coche, persona,
+cara, etc.). Las $X_j$ son valores de pixeles de la imagen para tres canales
+(rojo, verde y azul). Si las imágenes son de 100x100, tendríamos 30,000 variables
+de entrada.
+
+### ¿Qué estimar en problemas de clasificación? {-}
+En problemas de regresión, consideramos modelos de la forma $Y= f(X) + \epsilon$,
+y vimos que podíamos plantear el problema de aprendizaje supervisado como uno 
+donde el objetivo
+es estimar lo mejor que podamos la función $f$ mediante un estimador
+$\hat{f}$. Usamos entonces $\hat{f}$ para hacer predicciones. En el caso de regresión:
+  
+- $f(X)$ es la relación sistemática de $Y$ en función de $X$
+- Dada $X$, la variable observada $Y$ es una variable aleatoria
+  ($\epsilon$ depende de otras variables que no conocemos). 
+
+No podemos usar un modelo así
+en clasificación pues $G$ no es numérica. Sin embargo, podemos pensar que $X$
+nos da cierta información probabilística acerca de las clases que pueden ocurrir:
+
+- $P(G|X)$ es la probabilidad condicional de observar $G$ si tenemos $X$. Esto es la información sistemática de $G$ en función de $X$
+- Dada $X$, la clase observada $G$ es una variable aleatoria 
+(depende de otras variables que no conocemos).
+En analogía con el problema de regresión, quisiéramos estimar las probabilidades condicionales $P(G|X)$, que es la parte sistemática de la relación de $G$ en función de $X$.
+Normalmente codificamos las clases $g$ con una etiqueta numérica, de modo
+que $G\in\{0,1,\ldots, K-1\}$:
+
+#### Ejemplo {-}
+(Impago de tarjetas de crédito) 
+Supongamos que $X=$ porcentaje del crédito máximo usado, y $G\in\{0, 1\}$, donde
+$1$ corresponde al corriente y $0$ representa impago. Podríamos tener, por ejemplo:
+\begin{align*} 
+p_1(10\%) &= P(G=1|X=10\%) = 0.95 \\
+p_0(10\%) &= P(G=0|X=10\%) =  0.05
+\end{align*}
+y 
+\begin{align*} 
+p_1(95\%) &= P(G=1|X=95\%) = 0.70 \\
+p_0(95\%) &= P(G=0|X=95\%) =  0.30
+\end{align*}
+En resumen:
+```{block2, type='comentario'}
+En problemas de clasificación queremos estimar la parte
+sistemática de la relación de $G$ en función $X$, que en este caso quiere
+decir que buscamos estimar las probabilidades condicionales:
+\begin{align*}
+p_0(x) &= P(G=0|X=x), \\
+p_1(x) &= P(G=1|X=x), \\
+\vdots &  \\
+p_{K-1}(x) &= P(G=K-1|X=x)
+\end{align*}
+ para cada valor $x$ de las entradas.
+```
+
+A partir de estas probabilidades de clase podemos producir un clasificador de 
+varias maneras (las discutiremos más adelante). La
+forma más simple es usando el clasificador de Bayes:
+
+
+```{block2, type = 'comentario'}
+Dadas las probabilidades condicionales $p_0(x),p_1(x),p_2(x),\ldots, p_{K-1}(x)$, el 
+**clasificador de Bayes** asociado está dado por
+$$G (x) = \arg\max_{g} p_g(x)$$
+Es decir, clasificamos en la clase que tiene máxima probabilidad de ocurrir.
+```
+
+
+
+
+
+#### Ejemplo {-}
+(Impago de tarjetas de crédito) 
+Supongamos que $X=$ porcentaje del crédito máximo usado, y $G\in\{0, 1\}$, donde
+$1$ corresponde al corriente y $0$ representa impago.
+ Las probabilidades condicionales de clase para la clase *al corriente* podrían
+ ser, por ejemplo:
+
+- $p_1(x) = P(G=1|X = x) =0.95$  si $x < 0.15\%$
+- $p_1(x) = P(G=1|X = x) = 0.95 - 0.7(x - 0.15)$ si $x>=0.15$
+  
+Estas son probabilidades, pues hay otras variables que influyen en que un cliente
+permanezca al corriente o no en sus pagos más allá de información contenida en el
+porcentaje de crédito usado. Nótese que estas probabilidades son diferentes
+a las no condicionadas, por ejempo, podríamos tener que a total $P(G=1)=0.83$.
+
+```{r, fig.width = 5, fig.asp = 0.7 }
+p_1 <- function(x){
+  ifelse(x < 0.15, 0.95, 0.95 - 0.7 * (x - 0.15))
+}
+ggplot(tibble(x = seq(0, 1, 0.01)), aes(x = x)) + 
+    stat_function(fun = p_1)  +
+    ylab("p_1")
+```
+
+¿Por qué en este ejemplo ya no mostramos la función $p_0(x)$? 
+
+Si usamos el clasificador de Bayes, tendríamos por ejemplo que
+si $X=10\%$, como $p_1(10\%) = 0.95$ y $p_0(10\%)=0.05$, nuestra predicción
+de clase sería $\hat{G}(10\%) = 1$ (al corriente), pero si $X=90\%$,
+$\hat{G}(70\%) = 1$ (impago), pues $p_1(70\%) = 0.425$ y $p_0(70\%) = 0.575$.
+
+
+
+## Estimación de probabilidades de clase
+
+¿Cómo estimamos ahora las probabilidades de clase a partir de una
+muestra de entrenamiento? Veremos por ahora
+dos métodos: k-vecinos más cercanos y regresión logística. 
+
+
+### Ejemplo {-}
+
+
+Vamos a generar unos datos con el modelo simple del ejemplo anterior:
+
+```{r, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(kknn) # para hacer vecinos más cercanos
+simular_impago <- function(n = 500){
+    # suponemos que los valores de x están concentrados en valores bajos,
+    # quizá la manera en que los créditos son otorgados
+    x <- pmin(rexp(n, 100 / 40), 1)
+    # las probabilidades de estar al corriente:
+    probs <- p_1(x)
+    # finalmente, simulamos cuáles clientes siguen en al corriente y cuales no:
+    g <- ifelse(rbinom(length(x), 1, probs) == 1 , 1, 0)
+    dat_ent <- tibble(x = x, p_1 = probs, g = g)
+    dat_ent
+}
+set.seed(1933)
+dat_ent  <- simular_impago() %>% select(x, g) 
+dat_ent %>% sample_n(20)
+```
+
+Como este problema es de dos clases, podemos graficar como sigue (agregamos
+variación artificial para evitar traslape de los puntos):
+
+```{r, fig.width = 5, fig.asp = 0.7}
+graf_1 <- ggplot(dat_ent, aes(x = x)) +
+  geom_jitter(aes(colour = factor(g), y = g), 
+    width=0.0, height=0.1) + ylab("") + 
+    labs(colour = "Clase")
+graf_1 
+```
+
+
+
+### k-vecinos más cercanos 
+
+Podemos extender fácilmente k vecinos más cercanos para 
+estimar
+las probabilidades de clase $p_g(x)$. La idea general es igual que en regresión,
+y es simple: nos fijamos en las tasas locales de impago alrededor de la $x$ para
+la que queremos predecir.
+
+Supongamos entonces que tenemos un conjunto de entrenamiento
+$${\mathcal L}=\{ (x^{(1)},g^{(1)}),(x^{(2)},g^{(2)}), \ldots, (x^{(N)}, g^{(N)}) \}$$
+
+La idea es que si queremos predecir en $x_0$, busquemos varios $k$ vecinos más cercanos
+a $x_0$, y estimamos entonces $p_g(x)$ como la **proporción** de casos tipo $g$ que
+hay entre los $k$ vecinos de $x_0$. 
+
+Vemos entonces que este método es un intento de hacer una aproximación directa
+de las probabilidades condicionales de clase.
+
+Podemos escribir esto como:
+
+
+```{block, type='comentario'}
+**k vecinos más cercanos para clasificación**
+Estimamos contando los elementos de cada clase entre los $k$ vecinos más cercanos:
+$$\hat{p}_g (x_0) = \frac{1}{k}\sum_{x^{(i)} \in N_k(x_0)} I( g^{(i)} = g),$$
+    
+    
+para $g=1,2,\ldots, K$,  donde $N_k(x_0)$ es el conjunto de $k$ vecinos más cercanos en ${\mathcal L}$
+de $x_0$, y $I(g^{(i)}=g)=1$ cuando $g^{(i)}=g$, y cero en otro caso (indicadora).
+
+Usualmente normalizamos las variables de entrada $(X_1, \ldots, X_p)$ antes de calcular las distancias que usamos para encontrar los vecinos, especialmente si estas variables están en distintas escalas.
+```
+
+
+
+
+#### Ejemplo {-}
+
+Regresamos a nuestro problema de impago. Vamos a intentar estimar la
+probabilidad condicional de estar al corriente usando k vecinos 
+más cercanos (curva roja):
+
+
+
+```{r,fig.width = 5, fig.asp = 0.7}
+graf_data <- tibble(x = seq(0, 1, 0.01))
+# convertir g a factor para usar clasificación
+vmc <- kknn(factor(g) ~ x, train = dat_ent,  k = 60, test = graf_data)
+graf_data$p_1 <- vmc$prob[ ,2]
+graf_verdadero <- tibble(x = seq(0, 1, 0.01), p_1 = p_1(x))
+graf_1 + 
+  geom_line(data = graf_data, aes(y = p_1), colour = 'red', size=1.2) +
+  geom_line(data = graf_verdadero, aes(y = p_1)) +
+  ylab('Probabilidad al corriente') + xlab('% crédito usado') 
+```
+
+Igual que en el caso de regresión, ahora tenemos qué pensar cómo validar nuestra
+estimación, pues no vamos a tener la curva negra real para comparar.
+
+```{block, type='comentario'}
+Arriba denotamos las probabilidades teóricas como
+$p_0 (x), p_1 (x), \ldots, p_{K-1} (x)$. Denotamos probabilidades estimadas
+como $\hat{p}_0 (x), \hat{p}_1 (x), \ldots, \hat{p}_{K-1} (x)$
+```
+
+
+
+### Ejemplo {-}
+Consideremos datos de diabetes en mujeres Pima:
+
+A population of women who were at least 21 years old, of Pima Indian heritage and living near Phoenix, Arizona, was tested for diabetes according to World Health Organization criteria. The data were collected by the US National Institute of Diabetes and Digestive and Kidney Diseases. We used the 532 complete records after dropping the (mainly missing) data on serum insulin.
+
+- npreg number of pregnancies.
+- glu plasma glucose concentration in an oral glucose tolerance test.
+- bp diastolic blood pressure (mm Hg).
+- skin triceps skin fold thickness (mm).
+- bmi body mass index (weight in kg/(height in m)\^2).
+- ped diabetes pedigree function.
+- age age in years.
+- type Yes or No, for diabetic according to WHO criteria.
+
+```{r, message=FALSE, warning=FALSE}
+diabetes_ent <- as_tibble(MASS::Pima.tr)
+diabetes_pr <- as_tibble(MASS::Pima.te)
+diabetes_ent
+```
+
+Intentaremos predecir diabetes dependiendo del BMI:
+
+```{r, fig.width=5, fig.asp=0.7}
+library(ggplot2)
+ggplot(diabetes_ent, aes(x = bmi, y= as.numeric(type=='Yes'), colour = type)) +
+  geom_jitter(height = 0.05)
+```
+
+Usamos $30$ vecinos más cercanos para estimar $p_g(x)$:
+
+
+```{r, fig.width=5, fig.asp=0.7}
+graf_data <- tibble(bmi = seq(20, 45, 1))
+vmc_5 <- kknn(type ~ bmi, 
+              train = diabetes_ent,  k = 30, test = graf_data, kernel = 'rectangular')
+graf_data$Yes <- vmc_5$prob[ ,"Yes"]
+graf_data$No <- vmc_5$prob[ ,"No"]
+graf_data <- graf_data %>% gather(type, prob, Yes:No)
+ggplot(diabetes_ent, aes(x = bmi, y = as.numeric(type == 'Yes'), 
+    colour = type)) + geom_point() + 
+  geom_line(data = filter(graf_data, type =='Yes') , 
+    aes(x=bmi, y = prob, colour=type, group = type)) +
+  ylab('Probabilidad diabetes')
+```
+
+
+
+## Error para modelos de clasificación
+
+En regresión, vimos que la pérdida cuadrática era una opción razonable para ajustar
+modelos (descenso en gradiente, por ejemplo), y también para evaluar su desempeño.
+Ahora necesitamos una pérdida apropiada para trabajar con modelos de clasificación.
+
+Consideremos entonces que tenemos una estimación $\hat{p}_g(x)$ de las probabilidad
+de clase $P(G=g|X=x)$. Supongamos que observamos ahora $(x, g)$ (la clase
+verdadera es $g$).
+
+- Si 
+$\hat{p}_{g}(x)$ es muy cercana a uno, deberíamos penalizar poco, pues dimos
+probabilidad alta a $G=g$.
+- Si $\hat{p}_{g}(x)$ es chica, deberíamos penalizar más, pues dimos probabilidad baja
+a $G=g$.
+- Si $\hat{p}_{g}(x)$ es muy cercana a cero, y observamos $G=g$, deberíamos hacer
+una penalización muy alta (convergiendo a $\infty$, pues no es aceptable que sucedan
+eventos con probabilidad estimada extremadamente baja).
+
+
+
+Quisiéramos encontrar una función $h$ apropiada, de forma que la pérdida
+al observar $(x, g)$ sea 
+$$s(\hat{p}_{g}(x)),$$
+y que cumpla con los puntos arriba señalados. Entonces tenemos que
+
+- $s$ debe ser una función continua y decreciente en $[0,1]$
+- Podemos poner $s(1)=0$ (no hay pérdida si ocurre algo con probabilidad 1)
+- $s(p)$ debe ser muy grande is $p$ es muy chica.
+
+Una opción analíticamente conveniente es
+$$s(p) = - 2\log(p)$$
+
+```{r, fig.width=5, fig.asp=0.7}
+s <- function(z){ -2*log(z) }
+ggplot(tibble(p = (0:100) / 100), aes(x = p)) + 
+    stat_function(fun = s) + ylab("Devianza")
+```
+
+
+Y entonces la pérdida (que llamamos **devianza**) que construimos está dada, para
+$(x,g)$ observado y probabilidades estimadas $\hat{p}_g(x)$ por
+
+$$
+- 2 \log(\hat{p}_g(x))
+$$
+
+donde $\hat{p}(x)$ es la probabilidad estimada de nuestro modelo.
+
+
+**Observaciones**:
+
+- Ojo: el nombre de devianza se utiliza
+de manera diferente en distintos lugares (pero para cosas similares). En muchos lugares se define con el factor de 2, pero podemos incluirlo o no.
+
+- Una razón importante para usar la devianza como el objetivo a minimizar es que resulta en una estimación de máxima verosimilitud para los parámetros (condicional a las x's), como veremos más adelante.
+
+- No es fácil interpretar la devianza, pero es útil para ajustar y comparar modelos. Veremos otras medidas más fáciles de intrepretar más adelante.
+
+
+Compara la siguiente definición con la que vimos para modelos de regresión:
+
+```{block2, type = 'comentario'}
+Sea $${\mathcal L}=\{ (x^{(1)},g^{(1)}),(x^{(2)},g^{(2)}), \ldots, (x^{(N)}, g^{(N)}) \}$$
+una muestra de entrenamiento, a partir de las cuales construimos mediante
+un algoritmo  funciones estimadas
+$\hat{p}_{g} (x)$ para $g=0,1,\ldots, K-1$. La **devianza promedio de entrenamiento** 
+está dada por
+\begin{equation}
+\overline{err} = - \frac{2}{N}\sum_{i=1}^N log(\hat{p}_{g^{(i)}} (x^{(i)}))
+  (\#eq:devianza)
+\end {equation}
+Sea $${\mathcal T}=\{ (x_0^{(1)},g_0^{(1)}),(x_0^{(2)},g_0^{(2)}), \ldots, (x_0^{(m)}, g_0^{(m)}) \}$$ una muestra de prueba. La **devianza promedio de prueba** es
+\begin{equation}
+\hat{Err} = - \frac{2}{m}\sum_{i=1}^m log(\hat{p}_{g_0^{(i)}} (x_0^{(i)}))
+\end {equation}
+que es una estimación de la devianza de predicción
+$$-2E\left [ \log(\hat{p}_G(X)) \right ]$$
+```
+
+
+#### Ejemplo {-}
+
+Regresamos a nuestros ejemplo simulado de impago de tarjetas de crédito. Primero
+calculamos la devianza de entrenamiento
+
+```{r}
+s <- function(x) -2*log(x)
+vmc_entrena <- kknn(factor(g) ~ x, train = dat_ent,  k = 60,
+              test = dat_ent, kernel = 'rectangular')
+dat_dev <- dat_ent %>% select(x,g) %>% 
+    bind_cols(as_tibble(predict(vmc_entrena, type ='prob'))) %>% 
+    rename(hat_p_0 = `0`, hat_p_1 = `1`)
+dat_dev <- dat_dev %>% mutate(hat_p_g = ifelse(g==1, hat_p_1, hat_p_0))
+```
+
+Nótese que dependiendo de qué clase observamos (columna $g$), extraemos la
+probabilidad correspondiente a la columna hat_p_g:
+
+```{r}
+set.seed(125)
+dat_dev %>% sample_n(20)
+```
+
+Ahora aplicamos la función $s$ que describimos arriba, y promediamos sobre
+el conjunto de entrenamiento:
+
+```{r}
+dat_dev <- dat_dev %>% mutate(dev = s(hat_p_g))
+dat_dev %>% sample_n(20)
+dat_dev %>% ungroup %>% summarise(dev_entrena = mean(dev))
+```
+
+Recordemos que la devianza de entrenamiento no es la cantidad que evalúa el
+desempeño del modelo. Hagamos el cálculo entonces para una muestra de prueba:
+
+```{r}
+set.seed(1213)
+dat_prueba <- simular_impago(n = 1000) %>% select(x, g)
+vmc_prueba <- kknn(factor(g) ~ x, train = dat_ent,  k = 60,
+              test = dat_prueba, kernel = 'rectangular')
+dat_dev_prueba <- dat_prueba %>% select(x,g)%>% 
+    bind_cols(as_tibble(predict(vmc_prueba, type ='prob'))) %>% 
+    rename(hat_p_0 = `0`, hat_p_1 = `1`) 
+dat_dev_prueba <- dat_dev_prueba %>% mutate(hat_p_g = ifelse(g==1, hat_p_1, hat_p_0))
+dat_dev_prueba <- dat_dev_prueba %>% mutate(dev = s(hat_p_g))
+dat_dev_prueba %>% ungroup %>% summarise(dev_prueba = mean(dev))
+```
+
+
+### Ejercicio
+
+Utiliza 5, 20, 60, 200 y 400 vecinos más cercanos para nuestro ejemplo de tarjetas
+de crédito. ¿Cuál tiene menor devianza de prueba? ¿Cuál tiene menor devianza
+de entrenamiento? Grafica el mejor que obtengas y otros dos modelos malos. ¿Por qué
+crees que la devianza es muy grande para los modelos malos? 
+
+Nota: ten cuidado con probabilidades iguales a 0 o 1, pues en en estos casos
+la devianza puede dar $\infty$. Puedes por ejemplo hacer que las probabilidades
+siempre estén en $[\epsilon, 1-\epsilon]$ para $\epsilon>0$ chica.
+
+
+### Error de clasificación y función de pérdida 0-1
+
+Otra  medida común para medir el error de un clasificador es
+el *error de clasificación*, que también llamamos *probabilidad de clasificación
+incorrecta*, o error bajo pérdida 0-1. 
+
+```{block2, type ='comentario'}
+Si $\hat{G}$ es un clasificador (que puede
+ser construido a partir de probabilidades de clase),
+decimos que su **error de clasificación** es
+$$P(\hat{G}\neq G)$$
+```
+
+Aunque esta definición aplica para cualquier clasificador, podemos usarlo
+para clasificadores construidos con probabilidades de clase de la siguiente
+forma:
+
+```{block2, type='comentario'}
+Sean $\hat{p}_g(x)$ probabilidades de clase estimadas. El clasificador asociado
+está dado por
+$$\hat{G} (x) = \arg\max_g \hat{p}_g(x)$$
+Podemos estimar su  error de clasificación $P(\hat{G} \neq G)$ con una muestra
+de prueba
+$${\mathcal T}=\{ (x_0^{(1)},g_0^{(1)}),(x_0^{(2)},g_0^{(2)}), \ldots, (x_0^{(m)}, g_0^{(m)})$$
+mediante
+$$\hat{Err} = \frac{1}{m} \sum_{j=i}^m I(\hat{G}(x_0^{(i)}) \neq g_0^{(i)}),$$
+es decir, la proporción de casos de prueba que son clasificados incorrectamente.
+```
+
+#### Ejemplo {-}
+Veamos cómo se comporta en términos de error de clasificación nuestro último modelo:
+
+```{r}
+dat_dev$hat_G <- predict(vmc_entrena)
+dat_dev %>% mutate(correcto = hat_G == g) %>% 
+  ungroup %>% summarise(p_correctos = mean(correcto)) %>%
+  mutate(error_clasif = 1 - p_correctos)
+```
+
+Y calculamos el error de clasificación de prueba:
+
+```{r}
+dat_dev_prueba$hat_G <- predict(vmc_prueba)
+dat_dev_prueba %>% mutate(correcto = hat_G == g) %>% 
+  ungroup %>% summarise(p_correctos = mean(correcto)) %>%
+  mutate(error_clasif = 1 - p_correctos)
+```
+
+**Observación**: la tasa de correctos, para una gran cantidad de problemas,
+es una medida pobre del desempeño de un modelo.
+Es mejor utilizar medidas que usen de mejor manera las probabilidades estimadas
+por nuestro modelo. Además de la devianza, otra medida útil, por ejemplo, es el 
+*score de Brier*, que quizá es más fácil de entender. En el caso de problemas
+de clasificación binaria (0-1), es score de Brier sobre la muestra $\mathcal L$ es
+
+$$b = \frac{1}{N}\sum_{(x,g) \in \mathcal L} (\hat{p}_1(x) - g)^2,$$
+
+donde $g$ toma los valores 0 o 1.
+
+Estas son algunas razones por las que es mejor trabajar con probabilidades 
+de clase y devianza que solamente
+con clasificadores y error de clasificación:
+
+- Tenemos una medida de qué tan seguros estamos en la clasificación (por ejemplo,
+$p_1 = 0.55$ en vez de $p_1 = 0.995$). 
+- La salida de probabilides es un insumo más útil para tareas posteriores (por ejemplo,
+si quisiéramos ofrecer las 3 clases más probables en clasificación de imágenes).
+- Muchas veces minimizar el error de clasificación no es de interés para el problema,
+sino identificar casos con probabilidades altas de una clase u otra.
+- Permite hacer selección de modelos de manera más atinada: por ejemplo, dada una
+misma tasa de correctos, preferimos aquellos modelos que lo hacen con probabilidades
+que discriminan más (más altas cuando está en lo correcto y más bajas cuando 
+se equivoca).
+
+
+## Regresión logística
+
+En $k$ vecinos más cercanos, intentamos estimar directamente con promedios
+las probabilidades de clase, sin considerar ninguna estructura. Ahora
+consideramos modelos más estructurados, definidos por parámetros, e intentaremos
+ajustarlos minimizando devianza. 
+
+Igual que en regresión lineal, algunos de los modelos
+más simples que podemos imaginar son modelos lineales. Solo es necesario
+hacer una adaptación. 
+
+Supongamos que nuestra variable respuesta es $Y$, que toma valores 0 o 1.
+
+Ahora queremos definir $p(x) = p_1(x)$ (probabilidad de que ocurra la clase 1)
+en términos de un promedio ponderado de
+las variables de entrada, como en regresión lineal:
+
+$$\beta_0 + \beta_1 x_1 + \beta_2 x_2 + \cdots + \beta_px_p.$$
+
+Sin embargo, observamos que esta expresión puede
+dar valores negativos o mayores a uno, de forma que no necesariamente
+puede interpetarse como una probabilidad $p(x)$. Una de las formas más sencillas
+de resolver este problema es transformar esta expresión para que necesariamente
+esté en $[0,1]$ por medio de una función fija $h$:
+
+$$p_{\beta}(x) = h(\beta_0 + \beta_1 x_1 + \beta_2 x_2 + \cdots + \beta_px_p),$$
+donde $h$ debe ser una función que mapea valores reales a valores en $[0,1]$. 
+
+En este punto hay muchas funciones que podríamos usar. Para simplificar la interpretación y uso de este modelo, podemos escoger entre funciones que satisfagan, por ejemplo
+
+1. $h$ toma valores en $[0,1]$ es creciente y diferenciable
+2. $h(0) = 0.5$ (0 equivale a probabilidad 0.5, negativos dan probabilidades menores a 0.5 y positivos dan probabilidades mayores a 0.5)
+3. $h(-x)=1-h(x)$ (simetría). Por ejemplo, si $h(-2)=0.16$ entonces $h(2)= 1-0.16=0.84$. 
+
+Hay todavía muchas opciones. Una de las más simples es usar la función
+logística
+
+```{block2, type='comentario'}
+La función logística está dada por
+$$h(x)=\frac{e^x}{1+e^x}$$
+``` 
+
+```{r, fig.width = 4, fig.asp =0.5}
+h <- function(x){exp(x)/(1+exp(x)) }
+ggplot(tibble(x = seq(-6, 6, 0.01)), aes(x = x)) + stat_function(fun = h)
+```
+
+
+Esta función comprime adecuadamente (para nuestros propósitos) 
+el rango de todos los reales dentro del intervalo $[0,1]$. Si aplicamos
+al predictor lineal que consideramos, obtenemos:
+
+
+```{block2, type='comentario'}
+El **modelo de regresión logística**  está dado por
+$$p_1(x)=p_1(x;\beta)= h(\beta_0+\beta_1x_1 + \beta_2 x_2 + \cdots + \beta_p x_p)$$
+    
+y $$p_0(x)=p_0(x;\beta)=1-p_1(x;\beta),$$
+donde $\beta=(\beta_0,\beta_1, \beta_2, \cdots, \beta_p)$.
+```
+
+### Ejemplo {-}
+
+Consideremos nuestro ejemplo de impago. Podemos examinar qué tipo
+de probilidades obtendríamos con regresión logística.
+
+```{r, fig.width = 8, fig.asp = 0.5}
+crear_p <- function(beta_0, beta_1){
+    function(x){
+        h(beta_0 + beta_1 * x)
+    }
+}
+df_grid <- tibble(x = seq(0, 1, 0.01))
+betas <- tibble(beta_0 = c(-5, -0.5, 2.5),
+                beta_1 = c(10,   -2, -4))
+
+betas <- betas %>% 
+    mutate(p = map2(beta_0, beta_1, crear_p)) %>% 
+    mutate(grid = map(p, ~ df_grid %>% mutate(p_1 = .(x)))) %>% 
+    select(-p) %>% 
+    mutate(fun_nom = paste(beta_0, "+", beta_1, "x")) %>% 
+    unnest
+
+graf_1 + geom_line(data = betas, aes(x = x, y = p_1)) + facet_wrap(~fun_nom) 
+```
+
+Experimenta con otros valores de $\beta_0$ y $\beta_1$.
+
+## Aprendizaje de coeficientes para regresión logística (binomial).
+
+
+Ahora veremos cómo aprender los coeficientes con una muestra de entrenamiento. La idea
+general es :
+
+- Usamos la devianza de entrenamiento como medida de ajuste
+- Usamos descenso en gradiente para minimizar esta devianza y aprender los coeficientes.
+
+
+Sea entonces ${\mathcal L}$ una muestra de entrenamiento:
+
+$${\mathcal L}=\{ (x^{(1)},y^{(1)}),(x^{(2)},y^{(2)}), \ldots, (x^{(N)}, y^{(N)}) \}$$
+
+Donde $y=1$ o $y=0$ son las dos clases. Escribimos también
+
+
+$$p_1(x)=p_1(x;\beta)= h(\beta_0+\beta_1x_1 + \beta_2x_2 +\cdots + \beta_p x_p),$$
+
+y definimos la devianza sobre el conjunto de entrenamiento
+
+$$D(\beta) = -\frac{2}{N}\sum_{i=1}^N \log(p_{y^{(i)}} (x^{(i)})).$$ 
+
+Los **coeficientes estimados por regresión logística** están dados por
+$$\hat{\beta} = \arg\min_\beta D(\beta)$$
+
+Para minimizar utilizaremos descenso en gradiente (aunque hay más opciones).
+
+La última expresión para $D(\beta)$ puede ser difícil de operar, pero podemos reescribir como:
+$$D(\beta) = -\frac{2}{N}\sum_{i=1}^N y^{(i)} \log(p_{1} (x^{(i)})) + (1-y^{(i)}) \log(p_{0} (x^{(i)})).$$ 
+
+
+Para hacer descenso en gradiente, necesitamos encontrar $\frac{\partial D}{\beta_j}$
+para $j=1,2,\ldots,p$.
+
+Igual que en regresión lineal, comenzamos por calcular la derivada de un término:
+
+$$D^{(i)} (\beta) = y^{(i)} \log(p_{1} (x^{(i)})) + (1-y^{(i)}) \log(1-p_{1} (x^{(i)}))$$
+
+
+Calculamos primero las derivadas de $p_1 (x^{(i)};\beta)$ (demostrar la siguiente ecuación):
+$$\frac{\partial  p_1}{\partial \beta_0} = {p_1(x^{(i)})(1-p_1(x^{(i)}))},$$
+y 
+$$\frac{\partial  p_1}{\partial \beta_j} = p_1(x^{(i)})(1-p_1(x^{(i)}))x_j^{(i)},$$
+
+Así que
+\begin{align*}
+\frac{\partial D^{(i)}}{\partial \beta_j} &= \frac{y^{(i)}}{(p_1(x^{(i)}))}\frac{\partial  p_1}{\partial \beta_j} -
+\frac{1- y^{(i)}}{(1-p_1(x^{(i)}))}\frac{\partial  p_1}{\partial \beta_j} \\
+ &= \left( \frac{y^{(i)} - p_1(x^{(i)})}{(p_1(x^{(i)}))(1-p_1(x^{(i)}))}  \right )\frac{\partial  p_1}{\partial \beta_j} \\
+ & = \left ( y^{(i)} - p_1(x^{(i)}) \right ) x_j^{(i)} \\ 
+\end{align*}
+
+para $j=0,1,\ldots,p$, usando la convención de $x_0^{(i)}=1$. Podemos sumar
+ahora sobre la muestra de entrenamiento para obtener
+
+
+$$ \frac{\partial D}{\partial\beta_j} = - \frac{2}{N}\sum_{i=1}^N  (y^{(i)}-p(x^{(i)}))x_j^{(i)}$$
+
+De modo que, 
+
+```{block2, type='comentario'}
+Para un paso $\eta>0$ fijo, la iteración de descenso para regresión logística para
+el coeficiente $\beta_j$ es:
+$$\beta_{j}^{(k+1)} = \beta_j^{(k)} + {\eta}{\frac{2}{N}} \sum_{i=1}^N (y^{(i)}-p(x^{(i)}))x_j^{(i)}$$
+para 
+$j=0,1,\ldots, p$, donde fijamos $x_0^{(i)}=1$.
+```
+
+
+Podríamos usar las siguientes implementaciones, que representan cambios
+menores de lo que hicimos en regresión lineal. En primer lugar,
+escribimos la función que calcula la devianza. Podríamos poner:
+
+```{r}
+devianza_calc_simple <- function(x, y){
+  dev_fun <- function(beta){
+    p_beta <- h(as.matrix(cbind(1, x)) %*% beta) 
+   -2*mean(y*log(p_beta) + (1-y)*log(1-p_beta))
+  }
+  dev_fun
+}
+```
+
+
+***Observación** 
+Sin embargo, podemos hacer una simplificación para tener mejor desempeño y estabilidad.
+Observamos que 
+$$\log (p_1(x;\beta)) = \log\frac{ e^{x^t \beta}}{1+ e^{x^t\beta}} =
+x^t\beta - \log Z$$
+donde $Z = 1+ e^{x^t\beta}$. Por otra parte
+$$\log(p_0(x;\beta)) = \log\frac{ 1}{1+ e^{x^t\beta}} = - \log Z$$
+De modo que 
+$$y\log(p_1(x;\beta)) + (1- y)\log(p_0(x;\beta)) = yx^t\beta - \log Z= yx^t\beta - \log (1+e^{x^t\beta})$$
+Así que podemos escribir:
+```{r}
+devianza_calc <- function(x, y){
+  dev_fun <- function(beta){
+    x_beta <- as.matrix(cbind(1, x)) %*% beta
+   -2 * mean(y * x_beta - log(1 + exp(x_beta)))
+  }
+  dev_fun
+}
+```
+```{r}
+grad_calc <- function(x_ent, y_ent){
+  salida_grad <- function(beta){
+    N <- nrow(x_ent)
+    p_beta <- h(as.matrix(cbind(1, x_ent)) %*% beta) 
+    e <- y_ent - p_beta
+    grad_out <- - (2 / N) * as.numeric(t(cbind(1,x_ent)) %*% e)
+    names(grad_out) <- c('Intercept', colnames(x_ent))
+    grad_out
+  }
+  salida_grad
+}
+descenso <- function(n, z_0, eta, h_deriv){
+  z <- matrix(0,n, length(z_0))
+  z[1, ] <- z_0
+  for(i in 1:(n-1)){
+    z[i+1, ] <- z[i, ] - eta * h_deriv(z[i, ])
+  }
+  z
+}
+```
+#### Ejemplo {-}
+Probemos nuestros cálculos con el ejemplo de 1 entrada de tarjetas de crédito.
+```{r}
+dat_ent$y <- as.numeric(dat_ent$g==1)
+dat_ent <- dat_ent %>% ungroup %>% mutate(x_s = (x - mean(x))/sd(x))
+devianza <- devianza_calc_simple(dat_ent[, 'x_s', drop = FALSE], dat_ent$y)
+grad <- grad_calc(dat_ent[, 'x_s', drop = FALSE], dat_ent$y)
+grad(c(0,1))
+grad(c(0.5,-0.1))
+```
+Verificamos cálculo de gradiente:
+```{r}
+(devianza(c(0.5+0.0001,-0.1)) - devianza(c(0.5,-0.1)))/0.0001
+(devianza(c(0.5,-0.1+0.0001)) - devianza(c(0.5,-0.1)))/0.0001
+```
+Y hacemos descenso:
+```{r, fig.width=5, fig.asp=0.8}
+iteraciones <- descenso(200, z_0 = c(0,0), eta = 0.1, h_deriv = grad)
+tail(iteraciones, 20)
+#Checamos devianza
+qplot(1:nrow(iteraciones), apply(iteraciones, 1, devianza)) +
+    xlab("Iteración") + ylab("Devianza")
+# Y gradiente de devianza en la iteración final:
+grad(iteraciones[nrow(iteraciones), ])
+```
+Comparamos con glm:
+```{r}
+mod_1 <- glm(y ~ x_s, data = dat_ent, family = 'binomial') 
+coef(mod_1)
+mod_1$deviance
+devianza(iteraciones[200,])
+```
+
+La devianza que obtenemos con nuestros cálculos es:
+
+```{r}
+devianza(iteraciones[200,])
+```
+
+#### Máxima verosimilitud {-}
+Es fácil ver que este método de estimación de los coeficientes (minimizando la
+devianza de entrenamiento) es el método de máxima verosimilitud.  La verosimilitud
+de la muestra de entrenamiento está dada por:
+ $$L(\beta) =\prod_{i=1}^N p_{y^{(i)}} (x^{(i)})$$
+Y la log verosimilitud es
+ $$l(\beta) =\sum_{i=1}^N \log(p_{y^{(i)}} (x^{(i)})).$$
+Así que ajustar el modelo minimizando la expresión
+\@ref(eq:devianza)
+es los mismo que hacer máxima verosimilitud (condicional a los valores de $x$).
+
+
+
+
+#### Normalización {-}
+Igual que en regresión lineal, en regresión logística conviene normalizar
+las entradas antes de ajustar el modelo
+
+#### Desempeño de regresión logística como método de aprendizaje {-}
+Igual que en regresión lineal, regresión logística supera a métodos
+más sofisticados o nuevos en numerosos ejemplos. Las razones son similares:
+la rigidez de regresión logística es una fortaleza cuando la estructura
+lineal es una buena aproximación.
+
+#### Solución analítica
+El problema de regresión logística no tiene solución analítica. Paquetes
+como *glm* utilizan métodos numéricos (Newton-Raphson para regresión logística,
+por ejemplo).
+
+#### Interpretación de modelos logísticos
+**Todas** las precauciones que mencionamos en modelos lineales aplican
+para los modelos logísticos (aspectos estadísticos del ajuste, 
+relación con fenómeno de interés, argumentos
+de causalidad). 
+Igual que en regresión lineal, podemos explicar el comportamiento de las
+probabilidades de clase ajustadas, pero es un poco más difícil por la 
+no linealidad introducida por la función logística.
+#### Ejemplo {-}
+Consideremos el modelo ajustado:
+```{r}
+head(dat_ent)
+coeficientes <- iteraciones[200,]
+names(coeficientes) <- c("Intercept", "x_s")
+coeficientes
+```
+Como centramos todas las entradas, la ordenada al origen (*Intercept*) se interpreta
+como la probabilidad de clase cuando todas las variables están en su media:
+```{r}
+options(digits = 2)
+coeficientes[1]
+h(coeficientes[1])
+```
+Esto quiere decir que la probabilidad de estar al corriente es de 87\% cuando
+la variable $x$ está en su media.
+Si $x$ se incrementa en una desviación estándar, la cantidad
+$$z = \beta_0 + \beta_1x$$
+ la probabilidad de estar al corriente cambia a 67\%:
+```{r}
+h(coeficientes[1]+ coeficientes[2]*1)
+```
+Nótese que una desviación estándar de $x$ equivale a
+```{r}
+sd(dat_ent$x)
+```
+Así que en las unidades originales, un incremento de 30 en la variable $x$
+implica un cambio de 
+```{r}
+h(coeficientes[1] + coeficientes[2]) - h(coeficientes[1])
+```
+es decir, la probabilidad de manenterse al corriente baja 19 puntos porcentuales,
+de 85\% a 67%
+**Ojo**: En regresión lineal, las variables contribuyen independientemente
+de otras al predictor. Eso no pasa en regresión logística debido a la no linealidad
+introducida por la función logística $h$. Por ejemplo, imaginemos el modelo:
+$$p(z) = h(0.5 + 0.2 x_1 -0.5 x_2 + 0.7x_3),$$
+y suponemos las entradas normalizadas.
+Si todas las variables están en su media, la probabilidad de clase 1 es
+```{r}
+h(0.5)
+```
+Si todas las variables están en su media, y cambiamos en 1 desviación estándar la
+variable $x_1$, la probabilidad de clase 1 es:
+```{r}
+h(0.5 + 0.2)
+```
+Y el cambio en puntos de probabilidad es:
+```{r}
+h(0.5 + 0.2) - h(0.5)
+```
+Pero si la variable $x_2 = -1$, por ejemplo, el cambio en probabilidad es de
+```{r}
+h(0.5 + 0.2 - 0.5 * (-1)) - h(0.5 - 0.5 * (-1))
+```
+## Ejercicio: datos de diabetes
+
+Ya están divididos los datos en entrenamiento y prueba
+```{r, message=FALSE, warning=FALSE}
+diabetes_ent <- as_tibble(MASS::Pima.tr)
+diabetes_pr <- as_tibble(MASS::Pima.te)
+diabetes_ent
+diabetes_ent$id <- 1:nrow(diabetes_ent)
+diabetes_pr$id <- 1:nrow(diabetes_pr)
+```
+
+Normalizamos
+```{r, message=FALSE, warning=FALSE }
+library(dplyr)
+library(tidyr)
+
+datos_norm <- diabetes_ent %>% 
+  gather(variable, valor, npreg:age) %>%
+  group_by(variable) %>%
+  summarise(media = mean(valor), de = sd(valor))
+
+normalizar <- function(datos, datos_norm){
+  datos %>% 
+    gather(variable, valor, npreg:age) %>%
+    left_join(datos_norm) %>%
+    mutate(valor_s = (valor  - media)/de) %>%
+    select(id, type, variable, valor_s) %>%
+    spread(variable, valor_s)
+}
+
+diabetes_ent_s <- normalizar(diabetes_ent, datos_norm)
+diabetes_pr_s <- normalizar(diabetes_pr, datos_norm)
+```
+
+```{r}
+x_ent <- diabetes_ent_s %>% select(age:skin) %>% as.matrix
+p <- ncol(x_ent)
+y_ent <- diabetes_ent_s$type == 'Yes'
+grad <- grad_calc(x_ent, y_ent)
+iteraciones <- descenso(1000, rep(0,p+1), 0.1, h_deriv = grad)
+matplot(iteraciones, type = "l")
+```
+```{r}
+diabetes_coef <- tibble(variable = c('Intercept',colnames(x_ent)), coef = iteraciones[1000,])
+diabetes_coef
+```
+
+Ahora calculamos devianza de prueba y error de clasificación:
+
+```{r}
+x_prueba <- diabetes_pr_s %>% select(age:skin) %>% as.matrix
+y_prueba <- diabetes_pr_s$type == 'Yes'
+dev_prueba <- devianza_calc(x_prueba, y_prueba)
+dev_prueba(iteraciones[1000,])
+```
+
+Y para el error clasificación de prueba, necesitamos las probabilidades de clase ajustadas:
+
+```{r}
+beta <- iteraciones[1000, ]
+p_beta <- h(as.matrix(cbind(1, x_prueba)) %*% beta) 
+y_pred <- as.numeric(p_beta > 0.5)
+mean(y_prueba != y_pred)
+```
+
+Vamos a repetir usando keras.
+
+```{r}
+library(keras)
+
+# definición de estructura del modelo (regresión logística)
+n_entrena <- nrow(x_ent)
+
+modelo_diabetes <- keras_model_sequential() %>%
+        layer_dense(units = 1,        #una sola respuesta,
+            activation = "sigmoid",    # combinar variables linealmente y aplicar función logística
+            kernel_initializer = initializer_constant(0), #inicializamos coeficientes en 0
+            bias_initializer = initializer_constant(0))   #inicializamos ordenada en 0
+    # compilar seleccionanfo cantidad a minimizar, optimizador y métricas
+modelo_diabetes %>% compile(
+        loss = "binary_crossentropy",  # devianza es entropía cruzada
+        optimizer = optimizer_sgd(lr = 0.75), # descenso en gradiente
+        metrics = list("binary_crossentropy"))
+
+# Ahora iteramos
+# Primero probamos con un número bajo de iteraciones
+historia <- modelo_diabetes %>% fit(
+  as.matrix(x_ent), # x entradas
+  y_ent,            # y salida o target
+  batch_size = nrow(x_ent), # para descenso en gradiente
+  epochs = 20, # número de iteraciones
+  verbose = 0
+)
+plot(historia)
+```
+
+
+Y ahora podemos correr más iteraciones *adicionales*:
+
+```{r}
+historia <- modelo_diabetes %>% fit(
+  as.matrix(x_ent), # x entradas
+  y_ent,            # y salida o target
+  batch_size = nrow(x_ent), # para descenso en gradiente
+  epochs = 400, # número de iteraciones
+  verbose = 0
+)
+```
+
+Los errores de entrenamiento y prueba son:
+
+```{r}
+options(scipen = 0, digits = 4)
+evaluate(modelo_diabetes, x_ent, y_ent)
+```
+
+```{r}
+evaluate(modelo_diabetes, x_prueba, y_prueba)
+```
+
+
+
+Veamos que coeficientes obtuvimos:
+
+```{r}
+get_weights(modelo_diabetes)
+```
+
+Y comparamos con lo que obtenemos de *glm*:
+
+```{r}
+mod_1 <- glm(type ~ ., diabetes_ent_s %>% select(-id), family = binomial()) 
+mod_1 %>% coef
+```
+
+Para obtener error de entrenamiento
+
+```{r}
+(mod_1$deviance / nrow(diabetes_ent_s)) 
+```
+
+Nótese que la entropía cruzada no tiene el factor de 2. Podemos convertir esta devianza
+en entropía cruzada haciendo
+
+```{r}
+(mod_1$deviance / nrow(diabetes_ent_s) / 2) 
+```
+
+que coincide con el número que obtuvimos en keras.
+
+
+## Calibración de probabilidades
+
+Adiconalmente a buscar devianzas bajas, cuando usaremos las 
+probabilidades obtenidas para más análisis o algún proceso,
+es necesario checar el ajuste. Podemos hacer esto haciendo pruebas de la *calibración*
+de las probabilidades que arroja el modelo.
+
+Esto quiere decir que si el modelo nos dice que la probabilidad de que la clase 1 es 0.8,
+entonces si tenemos un número grande de estos casos (con probabilidad 0.8), alrededor
+de 80\% de éstos tienen que ser positivos. 
+
+#### Ejemplo {-}
+Podemos checar la calibración de nuestro modelo para el ejemplo de diabetes.
+
+```{r}
+proba_mod <- predict(modelo_diabetes, x_prueba)
+dat_calibracion <- tibble(obs = diabetes_pr %>% pull(type), probabilidad = proba_mod[,1]) %>% 
+    mutate(y = ifelse(obs == "Yes", 1, 0))
+dat_calibracion
+```
+
+
+```{r}
+ggplot(dat_calibracion, aes(x = probabilidad, y = y)) + 
+    geom_jitter(width = 0, height = 0.02, alpha = 0.2) +
+    geom_smooth(method = "loess", span = 0.5, colour = "red", se = FALSE) + 
+    geom_abline() +
+    coord_equal()
+```
+
+Y en esta gráfica verificamos que los promedios locales de proporciones de 0-1's son 
+consistentes con las probabilidades que estimamos. Otra manera de hacer esta gráfica
+es cortando las probabilidades en cubetas:
+
+```{r}
+# usamos intervalos suavizados (bayesiano beta-binomial) en lugar de los basados
+# en los errores estándar sqrt(p*(1-p) / n)
+calibracion_gpos <- dat_calibracion %>% 
+    mutate(proba_grupo = cut(probabilidad, 
+                             quantile(probabilidad, seq(0, 1, 0.1)),
+                             include.lowest = TRUE)) %>% 
+    group_by(proba_grupo) %>% 
+    summarise(prob_media = mean(probabilidad), 
+              n = n(),
+              obs = sum(y)) %>% 
+    mutate(obs_prop = (obs + 1) / (n + 1), 
+           inferior = qbeta(0.025, obs + 1,  n - obs + 1),
+           superior = qbeta(0.975, obs + 1,  n - obs + 1)
+           )
+calibracion_gpos
+```
+
+```{r}
+ggplot(calibracion_gpos, aes(x = prob_media, y = obs_prop, ymin = inferior,
+                             ymax = superior)) +
+    geom_abline() +
+    geom_linerange() +
+    geom_point(colour = "red") + coord_equal()
+```
+
+
+Y con esto verificamos que calibración del modelo es razonable.
+
