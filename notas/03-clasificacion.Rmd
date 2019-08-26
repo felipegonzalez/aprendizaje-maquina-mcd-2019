@@ -480,7 +480,7 @@ dat_dev_prueba %>% mutate(correcto = hat_G == g) %>%
 ```
 
 **Observación**: la tasa de correctos, para una gran cantidad de problemas,
-es una medida pobre del desempeño de un modelo (veremos los detalles más adelante).
+es una medida pobre del desempeño de un modelo.
 Es mejor utilizar medidas que usen de mejor manera las probabilidades estimadas
 por nuestro modelo. Además de la devianza, otra medida útil, por ejemplo, es el 
 *score de Brier*, que quizá es más fácil de entender. En el caso de problemas
@@ -490,43 +490,16 @@ $$b = \frac{1}{N}\sum_{(x,g) \in \mathcal L} (\hat{p}_1(x) - g)^2,$$
 
 donde $g$ toma los valores 0 o 1.
 
-
-
-### Discusión: relación entre devianza y error de clasificación
-
-Cuando utilizamos devianza,
-el mejor desempeño se alcanza cuando las probabilidades $\hat{p}_g (x)$
-están bien calibradas, es decir, están cercanas a las probabilidades 
-verdaderas $p_g (x)$. Esto se puede ver demostrando que las probabilidades
-$\hat{p}_g (x)$ que minimizan la devianza 
-$$-2E(\log (\hat{p}_G (X))) = -2E_X \left[  \sum_{g=1}^K p_g(X)\log\hat{p}_g(X)    \right]$$
-
-son precisamente $\hat{p}_g (x)=p_g (x)$. 
-
-Por otro lado, si consideramos el error de clasificación $P(\hat{G}\neq G)$,
-es posible demostrar que se minimiza cuando
-$\hat{G} = G_{bayes}$, donde
-
-$${G}_{bayes} (x) = \arg\max_g {p}_g(x).$$
-
-En consecuencia, cuando las $\hat{p}_g(x)$ estimadas están cercanas 
-a las verdaderas $p_g (x)$ (que es lo que intentamos hacer cuando usamos devianza),
-el clasificador $\hat{G}(x)$ producido a partir de las $\hat{p}_g(x)$ deberá
-estar cercano a $G_{bayes}(x)$, que es el clasificador que minimiza el error
-de clasificación.
-
-Este argumento explica que buscar modelos con devianza baja está alineado
-con buscar modelos con error de clasificación bajo.
-
-Cuando sea posible, es mejor trabajar con probabilidades de clase y devianza que solamente
-con clasificadores y error de clasificación. Hay varias razones para esto:
+Estas son algunas razones por las que es mejor trabajar con probabilidades 
+de clase y devianza que solamente
+con clasificadores y error de clasificación:
 
 - Tenemos una medida de qué tan seguros estamos en la clasificación (por ejemplo,
 $p_1 = 0.55$ en vez de $p_1 = 0.995$). 
 - La salida de probabilides es un insumo más útil para tareas posteriores (por ejemplo,
 si quisiéramos ofrecer las 3 clases más probables en clasificación de imágenes).
 - Muchas veces minimizar el error de clasificación no es de interés para el problema,
-si no identificar casos con probabilidades altas de una clase u otra.
+sino identificar casos con probabilidades altas de una clase u otra.
 - Permite hacer selección de modelos de manera más atinada: por ejemplo, dada una
 misma tasa de correctos, preferimos aquellos modelos que lo hacen con probabilidades
 que discriminan más (más altas cuando está en lo correcto y más bajas cuando 
@@ -795,6 +768,9 @@ Y la log verosimilitud es
 Así que ajustar el modelo minimizando la expresión
 \@ref(eq:devianza)
 es los mismo que hacer máxima verosimilitud (condicional a los valores de $x$).
+
+
+
 
 #### Normalización {-}
 Igual que en regresión lineal, en regresión logística conviene normalizar
