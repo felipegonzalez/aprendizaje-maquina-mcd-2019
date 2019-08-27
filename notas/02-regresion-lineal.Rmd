@@ -514,7 +514,7 @@ Igual que en los ejemplos anteriores, tenemos que precalcular el gradiente. Una
 vez que esto esté terminado, escribir la iteración es fácil.
 
 Recordamos que queremos minimizar (dividiendo entre dos para simplificar más adelante)
-$$L(\beta) = \frac{1}{2}\sum_{i=1}^N (y^{(i)} - f_\beta(x^{(i)}))^2$$
+$$L(\beta) = \frac{1}{2N}\sum_{i=1}^N (y^{(i)} - f_\beta(x^{(i)}))^2$$
 
 La derivada de la suma es la suma de las derivadas, así nos concentramos
 en derivar uno de los términos
@@ -807,7 +807,7 @@ $${g}_{\beta^s} (X) = (\beta_0^s - \sum_{j=1}^p \mu_j/s_j) + \frac{\beta_1^s}{s_
 Y vemos que tiene la misma forma funcional de $f_\beta(X)$. Si la solución de mínimos cuadrados es única,
 entonces una vez que ajustemos tenemos que tener $\hat{f}_\beta(X) = \hat{g}_{\beta^s} (X)$,
 lo que implica que
-$$\hat{\beta}_0 = \hat{\beta}_0^s -  \sum_{j=1}^p \mu_j/s_j$$ y
+$$\hat{\beta}_0 = \hat{\beta}_0^s -  \sum_{j=1}^p \hat{\beta}_0^s\mu_j/s_j$$ y
 $$\hat{\beta}_j = \hat{\beta}_j^s/s_j.$$
 
 Nótese que para pasar del problema estandarizado al no estandarizado simplemente
