@@ -1182,7 +1182,6 @@ es bastante cercano al valor verdadero (1).
 
 Ahora intentamos hacer lo mismo para dimensión $p=8$.
 
-
 ```{r}
 x <- map(1:1000, ~ runif(8, -1, 1))
 dat <- tibble(x = x) %>% 
@@ -1215,46 +1214,100 @@ Ahora intentamos algo similar con una función que es razonable aproximar
 con una función lineal:
 
 ```{r}
-fun_cubica <- function(x) 0.5 * (1 + x[1])^3
+fun_cuad <- function(x)  0.5 * (1 + x[1])^2
 ```
 
 Y queremos predecir para $x=(0,0,\ldots,0)$, cuyo valor exacto es
 
 ```{r}
-fun_cubica(0)
+fun_cuad(0)
 ```
 
-Repetimos el proceso: simulamos las entradas, y aplicamos un vecino más cercano:
+Los datos se generan de la siguiente forma:
 
 ```{r}
-set.seed(821)
-x <- map(1:1000,  ~ runif(8, -1, 1))
-dat <- tibble(x = x) %>% mutate(y = map_dbl(x, fun_cubica))
-dat <- dat %>% 
-  mutate(dist_origen = map_dbl(x, ~ sqrt(sum(.x^2)))) %>% 
-  arrange(dist_origen)
-mas_cercano <- dat[1, ]
-mas_cercano; mas_cercano$x[[1]]
+simular_datos <- function(p = 40){
+    x <- map(1:1000,  ~ runif(p, -1, 1))
+    dat <- tibble(x = x) %>% mutate(y = map_dbl(x, fun_cuad)) 
+    dat
+}
+```
+
+Por ejemplo para dimensión baja $p=1$ (nótese que una aproximación
+lineal es razonable):
+
+```{r}
+ejemplo <- simular_datos(p = 1) %>% mutate(x = unlist(x))
+ggplot(ejemplo, aes(x = x, y = y)) + geom_point() +
+    geom_smooth()
+```
+
+
+Ahora repetimos el proceso en dimensión $p=40$: simulamos las entradas, y aplicamos un vecino más cercano
+
+```{r}
+vmc_1 <- function(dat){
+    dat <- dat %>% 
+        mutate(dist_origen = map_dbl(x, ~ sqrt(sum(.x^2)))) %>% 
+        arrange(dist_origen)
+        mas_cercano <- dat[1, ]
+        mas_cercano$y
+}
+set.seed(834)
+dat <- simular_datos(p = 40)
+vmc_1(dat)
 ```
 
 Este no es un resultado muy bueno. Sin embargo, regresión se
 desempeña considerablemente mejor:
 
 ```{r}
-dat_reg <- cbind(y = dat$y, 
-                 x = matrix(unlist(dat$x), ncol = 8, byrow=T)) %>% 
-  as.data.frame()
-mod_lineal <- lm(y ~., dat = dat_reg)
-origen <- data.frame(matrix(rep(0,40), 1, 40))
-names(origen) <- names(dat_reg)[1:40]
-predict(mod_lineal, newdata = origen)
+regresion_pred <- function(dat){
+    p <- length(dat$x[[1]])
+    dat_reg <- cbind(
+        y = dat$y, 
+        x = matrix(unlist(dat$x), ncol = p, byrow=T)) %>% 
+        as.data.frame()
+    mod_lineal <- lm(y ~ ., dat = dat_reg)
+    origen <- data.frame(matrix(rep(0, p), 1, p))
+    names(origen) <- names(dat_reg)[2:(p+1)]
+    predict(mod_lineal, newdata = origen)
+}
+regresion_pred(dat)
 ```
 
 Donde podemos ver que típicamente la predicción de regresión
 es mucho mejor que la de 1 vecino más cercano. Esto es porque el modelo **explota la estructura aproximadamente lineal del problema** (¿cuál estructura lineal? haz algunas gráficas). Nota: corre este ejemplo varias veces con semilla diferente.
 
+*Solución*: vamos a hacer varias simulaciones, para ver qué modelo
+se desempeña mejor.
+
+```{r}
+sims <- map(1:200, function(i){
+    dat <- simular_datos(p = 40)
+    vmc_y <- vmc_1(dat)
+    reg_y <- regresion_pred(dat)
+    tibble(rep = i, 
+           error = c(abs(vmc_y - 0.5), abs(reg_y - 0.5)), 
+            tipo = c("vmc", "regresion"))
+}) %>% bind_rows
+ggplot(sims, aes(x = tipo, y = error)) + geom_boxplot() 
+```
+
+Así que típicamente el error de vecinos más cercanos es más alto
+que el de regresión. El error esperado es para vmc es más de doble
+que el de regresión:
+
+```{r}
+sims %>% group_by(tipo) %>% 
+    summarise(media_error = mean(error))
+```
+
+
 Lo que sucede más específicamente es que en regresión lineal
 utilizamos **todos** los datos para hacer nuestra estimación en cada
 predicción. Si la estructura del problema es aproximadamente lineal, 
 entonces regresión lineal explota la estructura para hacer *pooling*
-de toda la infromación para construir predicción con sesgo y varianza bajas.
+de toda la información para construir predicción con sesgo y varianza bajas.
+En contraste, vecinos más cercanos sufre de varianza alta.
+
