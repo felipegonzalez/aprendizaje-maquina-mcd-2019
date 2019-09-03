@@ -9,6 +9,10 @@
 
 library(shiny)
 library(tidyverse)
+p_1 <- function(x){
+    ifelse(x < 0.15, 0.95, 0.95 - 0.7 * (x - 0.15))
+}
+h <- function(x) exp(x) / (1 + exp(x))
 simular_impago <- function(n = 500){
     # suponemos que los valores de x están concentrados en valores bajos,
     # quizá la manera en que los créditos son otorgados
