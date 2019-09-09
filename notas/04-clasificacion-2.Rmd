@@ -561,3 +561,189 @@ auc_2
 En este ejemplo, vemos que casi no importa que perfil de especificidad y sensibilidad busquemos: el clasificador que usa todas las variables
 domina casi siempre al clasificador que sólo utiliza IMC y edad. 
 
+
+
+
+## Regresión logística para más de 2 clases
+
+Consideramos ahora un problema con más de dos clases, de manera que $G ∈ {1,2,...,K}$
+($K$ clases), y tenemos $X = (X1 ...,Xp)$ entradas.
+¿Cómo generalizar el modelo de regresión logística para este problema?
+Una estrategia es la de uno contra todos:
+
+En clasificación *uno contra todos*, hacemos
+
+1. Para cada clase $g\in\{1,\ldots,K\}$ entrenamos un modelo de regresión
+logística (binaria) $\hat{p}^{(g)}(x)$, tomando como positivos a los casos de 1
+clase $g$, y como negativos a todo el resto. Esto lo hacemos como en las secciones anteriores, y de manera independiente para cada clase.
+
+2. Para clasificar un nuevo caso $x$, 
+calculamos 
+$$\hat{p}^{(1)}, \hat{p}^{(2)},\ldots, \hat{p}^{(K)}$$
+
+y clasificamos a la clase de máxima probabilidad
+$$\hat{G}(x) = \arg\max_g \hat{p}^{(g)}(x)$$
+Nótese que no hay ninguna garantía de que las probabilidades de clase
+sumen 1, pues se trata de estimaciones independientes de cada clase. En este sentido, produce estimaciones que en realidad no satisfacen las propiedades del modelo de probabilidad establecido - aunque pueden normalizarse. Sin embargo, esta estrategia es simple y en 
+muchos casos funciona bien.
+
+
+### Regresión logística multinomial {-}
+
+Si queremos obtener estimaciones de las probabilidades de clase que sumen uno, entonces tenemos que contruir las estimaciones de cada clase de clase de manera conjunta.
+Como vimos antes, tenemos que estimar, para cada $x$ y $g\in\{1,\ldots, K\}$,
+las probabilidades condicionales de clase:
+$$p_g(x) = P(G = g|X = x).$$
+
+Consideremos primero cómo funciona el modelo de regresión logística (2 clases)
+
+Tenemos que
+$$p_1(x) = h(\beta_0 + \beta_1x_1 + \ldots + \beta_p x_p) =
+\exp(\beta_0 + \beta_1x_1 + \ldots + \beta_p x_p)/Z$$
+y
+$$p_2 (x) = 1/Z$$
+donde $Z = 1 + \exp(\beta_0 + \beta_1x_1 + \ldots + \beta_p x_p)$.
+
+Podemos generalizar para más de 2 clases usando una idea similar. Cada clase
+tiene su juego de coeficientes:
+
+$$p_1(x) =  \exp(\beta_{0,1} + \beta_{1,1}x_1 + \ldots + \beta_{p,1} x_p)/Z$$
+
+$$p_2(x) =  \exp(\beta_{0,2} + \beta_{1,2}x_2 + \ldots + \beta_{p.2} x_p)/Z$$
+hasta
+$$p_{K-1}(x) =  \exp(\beta_{0,{K-1}} + \beta_{1,{K-1}}x_2 + \ldots + \beta_{p,{K-1}} x_p)/Z$$
+y 
+$$p_K(x) = 1/Z$$
+
+En este caso, para que las probabilidades sumen 1, necesitamos que
+$$Z = 1 + \sum_{j=1}^{K-1}\exp(\beta_0^j + \beta_1^jx_1 + \ldots + \beta_p^j x_p)$$
+
+Para ajustar coeficientes, usamos el mismo criterio de devianza de entrenamiento.
+Buscamos minimizar:
+$$D(\beta)=−2 \sum_{i=1}^N \log p_{g^{(i)}}(x^{(i)}),$$
+Donde $\beta$ contiene todos los coeficientes organizados en un vector
+de tamaño $(p+1)(K-1)$:
+$$\beta = ( \beta_0^1, \beta_1^1, \ldots , \beta_p^1,  \beta_0^2, \beta_1^2, \ldots , \beta_p^2, \ldots \beta_0^{K-1}, \beta_1^{K-1}, \ldots , \beta_p^{K-1} )$$
+
+Y ahora podemos usar algún método númerico para minimizar la devianza (por ejemplo,
+descenso en gradiente).  Cuando
+es muy importante tener  probabilidades bien calibradas, el enfoque multinomial
+es más apropiado, pero muchas veces, especialmente si sólo nos interesa clasificar, los
+dos métodos dan resultados similares.
+
+### Interpretación de coeficientes
+
+Los coeficientes mostrados en la parametrización de arriba se intrepretan
+más fácilmente como comparaciones de la clase $g$ contra la clase $K$, pues
+
+$$\log\left (\frac{p_g(x)}{p_K(x)}\right ) = \beta_{0,{g}} + \beta_{1,{g}}x_1 + \ldots + \beta_{p,{g}} x_p$$
+
+Para comparar la clase $j$ con la clase $k$ notamos que
+
+$$\log\left (\frac{p_j(x)}{p_k(x)}\right ) = 
+(\beta_{0,{j}}- \beta_{0,{k}}) + (\beta_{1,{j}}-\beta_{1,{k}} )x_1 + \ldots + (\beta_{p,{j}} -\beta_{p,{k}})  x_p$$
+
+Así que sólo hace falta restar los coeficientes. Nótese adicionalmente
+que en la parametrización, podemos pensar que
+
+$$\beta_{0,K} = \beta_{1,K} = \cdots = \beta_{p,K} = 0$$ 
+
+
+### Ejemplo: Clasificación de dígitos con regresión multinomial
+
+```{r, message = FALSE, warning = FALSE}
+digitos_entrena <- read_csv('../datos/zip-train.csv')
+digitos_prueba <- read_csv('../datos/zip-test.csv')
+names(digitos_entrena)[1] <- 'digito'
+names(digitos_entrena)[2:257] <- paste0('pixel_', 1:256)
+names(digitos_prueba)[1] <- 'digito'
+names(digitos_prueba)[2:257] <- paste0('pixel_', 1:256)
+```
+
+En este ejemplo, usamos la función *multinom* de *nnet*, que usa
+BFGS para hacer la optimización:
+```{r}
+library(nnet)
+mod_mult <- multinom(digito ~ ., data = digitos_entrena, MaxNWt=100000, maxit = 20)
+```
+
+Checamos para diagnóstico la matriz de confusión **de entrenamiento**.
+
+```{r}
+table(predict(mod_mult), digitos_entrena$digito)
+```
+
+
+Ahora validamos con la muestra de prueba y calculamos error de clasificación:
+```{r}
+confusion_prueba <- table(predict(mod_mult, newdata = digitos_prueba), digitos_prueba$digito)
+confusion_prueba
+sum(diag(confusion_prueba))/sum(confusion_prueba)
+round(prop.table(confusion_prueba, 2),2)
+```
+
+El resultado no es muy bueno. Veremos más adelante mejores métodos para 
+este problema. ¿Podemos interpretar el modelo?
+
+Una idea es tomar los coeficientes y graficarlos según la estructura de
+las imágenes:
+
+```{r}
+coefs <- coef(mod_mult)
+coefs_reng <- coefs[1, , drop =FALSE]
+coefs <- rbind(coefs_reng, coefs)
+coefs[1 , ] <- 0
+dim(coefs)
+beta_df <- coefs[,-1] %>% as.data.frame %>% 
+  mutate(digito = 0:(nrow(coefs)-1)) %>%
+  gather(pixel, valor, contains('pixel')) %>%
+  separate(pixel, into = c('str','pixel_no'), sep='_') %>%
+  mutate(x = (as.integer(pixel_no)-1) %% 16, y = -((as.integer(pixel_no)-1) %/% 16))
+head(beta_df)
+```
+
+Podemos cruzar la tabla con sí misma para hacer comparaciones de cómo discrimina
+el modelo entre cada par de dígitos:
+
+```{r}
+tab_coef <- beta_df %>% select(digito, x, y, valor)
+tab_coef_1 <- tab_coef
+names(tab_coef_1) <- c('digito_1','x','y','valor_1')
+tab_cruzada <- full_join(tab_coef_1, tab_coef) %>% mutate(dif = valor_1 - valor)
+tab_cruzada <- tab_cruzada %>% group_by(digito, digito_1) %>% 
+  mutate(dif_s = (dif - mean(dif))/sd(dif)) %>%
+  mutate(dif_p = pmin(pmax(dif_s, -2), 2))
+```
+
+```{r}
+ggplot(tab_cruzada, aes(x=x, y=y)) + geom_tile(aes(fill = dif_p)) + 
+  facet_grid(digito_1~digito) + scale_fill_distiller(palette = "Spectral")
+```
+
+
+
+### Discusión {-}
+
+Nótese que no corrimos el modelo hasta convergencia. Vamos a hacerlo ahora:
+
+
+```{r}
+mod_mult <- multinom(digito ~ ., data = digitos_entrena, MaxNWt=100000, maxit = 500)
+```
+
+
+```{r, cache = TRUE}
+confusion_prueba <- table(predict(mod_mult, newdata = digitos_prueba), digitos_prueba$digito)
+confusion_prueba
+sum(diag(confusion_prueba))/sum(confusion_prueba)
+round(prop.table(confusion_prueba, 2),2)
+```
+
+Y nota que el error de clasificación es más grande que cuando nos detuvimos antes. Discute en clase:
+
+- Grafica los coeficientes para este segundo modelo
+- ¿En cuál de los dos modelos es más fácil interpretar los coeficientes? ¿En cuál
+es menor el error?
+- ¿Cuál crees que es el problema de este segundo modelo comparado con el primero? ¿Por qué crees que sucede? ¿Cómo podríamos corregir este problema?
+
+
