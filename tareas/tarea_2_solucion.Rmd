@@ -1,0 +1,204 @@
+---
+title: "Tarea 2: descenso en gradiente"
+output: html_document
+---
+
+```{r, warnings = FALSE, messages =FALSE}
+library(tidyverse)
+```
+
+
+En el siguiente problema queremos predecir el porcentaje
+de grasa corporal (que es relativamente costoso de medir) en
+términos de distintas medidas del cuerpo (estatura, peso, 
+circunferencia de abdomen, etc.) Usaremos [estos datos](http://jse.amstat.org/v4n1/datasets.johnson.html). Las
+medidas corporales están estandarizadas.
+
+```{r}
+bodyfat <- read_csv('../datos/bodyfat_est.csv')
+```
+
+
+Vamos a ajustamos un modelo lineal de la forma:
+
+$grasacorp ~ b_0 + b_1 estatura + b_2 abdomen + b_3 muñeca + b_4 rodilla$
+
+
+### Parte 1: separar muestra de entrenamiento y de prueba:
+
+Separa los datos a la mitad: 50\% de entrenamiento y 50\% de prueba aproximadamente:
+
+```{r}
+set.seed(92311) 
+bodyfat$id <- 1:nrow(bodyfat)
+bodyfat$unif <- runif(nrow(bodyfat), 0, 1)
+dat_ent <- bodyfat %>% filter(unif < 0.5)
+dat_pr <- bodyfat %>% filter(unif >= 0.5)
+dim(dat_ent)
+dim(dat_pr)
+```
+
+**Pregunta**: ¿Por qué en este ejemplo no sería buena idea tomar, por ejemplo,
+90\% de datos para entrenamiento y 10\% para prueba?
+
+
+### Parte 2: Calcula  algunos resúmenes de los datos de entrenamiento
+
+Calcula al menos mínimo, máximo y algunos percentiles para
+las variables *estatura*, *abdomen*, *muñeca* y *grasacorp*.  Por ejemplo:
+
+```{r}
+plot(dat_ent$abdomen, dat_ent$estatura)
+```
+
+**Pregunta**: ¿Ves algunos datos problemáticos o posiblemente erróneos? Si los ves,
+¿qué piensas que podría ser una buena estrategia para tratarlos?
+
+Parece que hay un dato de estatura erróneo. Ninguna de sus mediciones son excepcionales,
+excepto - podemos excluirlo y establecer una regla en el preprocesamiento de datos, lo mejor
+es investigarlo.
+
+
+```{r}
+dat_ent <- filter(dat_ent, estatura > -10)
+```
+
+### Parte 3: Ajusta un modelo líneal usando descenso en gradiente
+
+Puedes usar estas funciones, o escribir el código tu mismo:
+
+```{r}
+error_calc <- function(x, y){
+  # x es un data.frame o matrix con entradas
+  # y es la respuesta
+  error_fun <- function(beta){
+    # esta funcion debe devolver rss
+    y_hat <- as.matrix(cbind(1,x)) %*% beta
+    # residual
+    e <- y - y_hat
+    error <- 0.5*mean(e^2)
+    error
+  }
+  error_fun
+}
+
+
+grad_calc <- function(x, y){
+  # devuelve una función que calcula el gradiente para 
+  # parámetros beta   
+  # x es un data.frame o matrix con entradas
+  # y es la respuesta
+  grad_fun <- function(beta){
+      # para este cálculo, ver notas
+      f_beta <- as.matrix(cbind(1, x)) %*% beta
+      e <- y - f_beta
+      gradiente <- - apply(t(cbind(1,x)) %*% e, 1, mean) 
+      names(gradiente)[1] <- 'Intercept'
+      gradiente
+    }
+   grad_fun
+}
+
+
+descenso <- function(n, z_0, eta, h_grad){
+  # esta función calcula n iteraciones de descenso en gradiente 
+  z <- matrix(0,n, length(z_0))
+  z[1, ] <- z_0
+  for(i in 1:(n-1)){
+    z[i+1,] <- z[i,] - eta * h_grad(z[i,])
+  }
+  z
+}
+```
+
+
+```{r}
+x_ent <- dat_ent %>% select(estatura, abdomen, muñeca, rodilla)
+x_pr <- dat_pr %>% select(estatura, abdomen, muñeca, rodilla)
+y_ent <- dat_ent$grasacorp
+y_pr <- dat_pr$grasacorp
+```
+
+**Pregunta**: Rellena el siguiente código:
+
+```{r}
+gradiente <- grad_calc(x_ent, y_ent)
+error <- error_calc(x_ent , y_ent)
+```
+
+
+**Pregunta**: ¿cuál es un valor de número de iteraciones (n) y tamaño 
+de paso (eta) para este problema? ¿Qué pasa si haces eta demasiado grande?
+
+Ahora **selecciona un valor del tamaño de paso** y corre descenso
+en gradiente:
+
+```{r}
+n <- 30 ### rellena aquí un valor apropiado
+eta <- 0.004 ## rellena aquí un valor apropiado
+salida <- descenso(n, c(0,0,0,0,0), eta, gradiente)
+salida %>% tail
+```
+
+Grafica el error para cada iteración para checar convergencia:
+
+```{r}
+## Aquí tu código
+tail(apply(salida, 1, error))
+```
+
+
+## Checa con lm
+
+**Pregunta**: ¿Obtienes los mismos coeficientes *beta* si 
+usas, por ejemplo, la función *lm*?
+
+```{r}
+mod_1 <- lm(grasacorp ~  estatura +  abdomen + muñeca + rodilla, data = dat_ent)
+beta <- coef(mod_1)
+beta
+```
+
+
+### Parte 4: Evalúa con muestra de prueba
+
+**Pregunta**: ¿cuál es el error en muestra de prueba? ¿cómo se compara con el error de entrenamiento?
+
+Eevaluamos con la muestra de prueba:
+
+```{r}
+calcular_preds <- function(x, beta){
+  as.matrix(cbind(1, x)) %*% beta
+}
+beta <- beta
+preds <- calcular_preds(x_pr, beta)
+# grafica predicciones vs observados
+qplot(x = preds, y = y_pr) + geom_abline(intercept = 0, slope = 1) + coord_equal() 
+
+error_entrena <- mean((y_ent - fitted(mod_1))^2)
+error_prueba <- mean((y_pr - preds)^2)
+error_entrena
+error_prueba
+sqrt(error_entrena)
+sqrt(error_prueba)
+```
+
+Este número podemos interpretarlo en la escala de la variable que queremos predecir
+(está en porcentaje).
+
+También podemos evaluar otro tipo de errores que pueden interpretarse
+más fácilmente, por ejemplo, la media del
+las diferencias en valores absolutos:
+
+```{r}
+mean(abs(y_pr - preds))
+```
+
+**Pregunta**: ¿Cómo se compara este error con la variación que existe en la 
+variable grasa corporal?
+
+El error de entrenamiento es:
+
+```{r}
+mean(abs(fitted(mod_1) - y_ent))
+```
