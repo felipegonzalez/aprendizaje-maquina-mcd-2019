@@ -226,12 +226,338 @@ $$\frac{vn}{fn+vn}=\frac{vn}{pred.neg}$$
 
 Dependiendo de el tema y el objetivo hay medidas más naturales que otras:
 
+- En búsqueda y recuperación de documentos o imagenes, o detección de fraude ( donde positivo = el documento es relevante / la transacción es fraudulenta y negativo = el documento no es relevante / transacción normal), se usa más comunmente precisión y recall. Esto es porque nos interesa
+saber: de todos los resultados con predicción positiva, 
+qué porcentaje son relevantes (precisión), y también, 
+de todos los documentos relevantes (positivos), cuáles son recuperados (recall/sensibilidad).
+
+Un clasificador *preciso* es uno que tal que una fracción alta de sus predicciones positivas son
+positivos verdaderos. Sin embargo, podría no ser muy *sensible*: de todos los positivos que hay, 
+solamente clasifica como positivos a una fracción chica. Conversamente, un clasificador podría
+ser muy sensible: captura una fracción alta de los positivos, pero también clasifica como
+positivos a muchos casos que son negativos (*precisión* baja).
+
+- En estadística muchas veces se usa sensibilidad (recall) y especificidad (cuántos negativos descartamos al clasificar como negativos). Por ejemplo, si se tratara
+de una prueba para detectar riesgo de una enfermedad, sensibilidad nos dice qué 
+porcentaje de los casos riesgosos estamos capturando, y especificidad nos dice qué 
+tan bien excluimos a los casos no riesgosos (especificidad).
+
+```{block2, type='comentario'}
+Cada clasificador tiene un balance distinto precisión y sensibilidad (recall). 
+Muchas veces no escogemos clasificadores por la tasa
+de incorrectos solamente, sino que intentamos buscar un balance adecuado entre el comportamiento de clasificación para positivos y para negativos.
+```
+
+### Medidas resumen de desempeño {-}
+
+La primera medida resumen que vimos es el error de clasificación, que no toma en
+cuenta el tipo de errores:
+
+- **Tasa de clasificación incorrecta**
+$$\frac{fn+fv}{neg+pos}$$
+Y existen otras medidas que intentan resumir los dos tipos de errores de distinta manera,
+como
+
+- **Medida F** (media armónica de precisión y recall)
+$$2\frac{precision \cdot recall}{precision +  recall}$$
+Se usa la la media armónica que penaliza más fuertemente desempeño malo en
+alguna de nuestras dos medidas (precisión y recall) que el promedio armónico.
 
 
 
+#### Ejemplo {-}
+Si precision = 0.01 (muy malo) y recall = 1 (excelente), o recall=0.01 y precisión = 1 (excelente),
+la media usual considera igual de buenos estos dos clasificadores. A su vez, estos
+dos se califican similar a un clasificador con precision = 0.5 y recall = 0.5. 
+Sin embargo, la media armónica (F) da un score mucho más bajo a los primeros dos
+clasificadores:
+```{r}
+media_armonica <- function(x){
+    1/mean(1/x)
+}
+media_armonica(c(0.01, 1))
+media_armonica(c(0.5, 0.5))
+```
+
+- **AUC** (area bajo la curva ROC) que veremos más adelante.
+
+
+#### Ejercicio {-}
+Calcular la matriz de confusión (sobre la muestra de prueba) para el
+clasificador logístico de diabetes en términos de imc y edad. Calcula 
+adicionalmente con la muestra de prueba sus valores de especificidad y sensibilidad, y precisión y recall. 
+
+```{r, warnings=FALSE, messages=FALSE}
+diabetes_ent <- as_tibble(MASS::Pima.tr)
+diabetes_pr <- as_tibble(MASS::Pima.te)
+mod_1 <- glm(type ~ bmi + age, data = diabetes_ent, family = 'binomial')
+preds_prueba <- predict(mod_1, newdata = diabetes_pr, type ='response')
+# rellena esta linea en términos de preds_prueba
+clase_pred <- preds_prueba > 0.5
+confusion <- table(clase_pred, diabetes_pr$type)
+confusion
+```
+
+Ahora calculamos recall y precisión:
+
+```{r}
+sensibilidad <- confusion[2, 2] / sum(confusion[, 2])
+precision <- confusion[2, 2] / sum(confusion[2, ])
+sprintf("Precisión: %.2f, Sensibilidad (recall): %.2f", precision, sensibilidad)
+```
+
+
+### Puntos de corte para un clasificador binario
+
+¿Qué sucede cuando el perfil de precisión y sensibilidad (o especificidad y sensibilidad) de un 
+clasificador binario no es apropiado para nuestros fines?
+Recordemos que una vez que hemos estimado con $\hat{p}_1(x)$, nuestra regla de clasificación es:
+
+1. Predecir positivo si $\hat{p}_1(x) > 0.5$, 
+2. Predecir negativo si $\hat{p}_1(x) \leq 0.5.$
+
+Esto sugiere una regla alternativa:
+
+Para $0 < d < 1$, podemos utilizar nuestras estimaciones $\hat{p}_1(x)$ para construir un clasificador alternativo poniendo:
+
+1. Predecir positivo si $\hat{p}_1(x) > d$, 
+2. Predecir negativo si $\hat{p}_1(x) \leq d$.
+
+
+Distintos valores de $d$ dan distintos perfiles de sensibilidad-especificidad para una misma estimación de las probabilidades condicionales de clase:
+Para minimizar la tasa de incorrectos conviene poner $d = 0.5$. Sin embargo, es común que este no es el único fin de un clasificador bueno (pensar en ejemplo de fraude).
+
+- Cuando incrementamos d, quiere decir que exigimos estar más seguros de que un caso es positivo para clasificarlo como positivo. Esto quiere decir que la sensibilidad (recall) tiende a ser más chica.
+Por otro lado la precisión tiende a aumentar, pues el porcentaje de verdaderos positivos entre nuestras predicciones positivas será mayor. También la especificidad tiende a ser más grande.
+
+#### Ejemplo {-}
+Por ejemplo, si en el caso de diabetes incrementamos el punto de corte a 0.7:
+```{r}
+tab <- table(preds_prueba > 0.7, diabetes_pr$type)
+tab
+tab_1 <- prop.table(tab, 1)
+tab_2 <- prop.table(tab, 2)
+tab_1
+tab_2
+```
+
+La precisión mejora a `r round(tab_1[2,2], 2)`,
+pero la sensibilidad (recall) se deteriora a `r round(tab_2[2,2],2)`
+
+
+- Cuando hacemos más chico d, entonces exigimos estar más seguros de que un caso es negativo para clasificarlo como negativo. Esto aumenta la sensibilidad, pero la precisión baja.
+Por ejemplo, si en el caso de diabetes ponemos el punto de corte en 0.3:
+
+```{r}
+tab <- table(preds_prueba > 0.3, diabetes_pr$type)
+tab
+tab_1 <- prop.table(tab, 1)
+tab_2 <- prop.table(tab, 2)
+tab_1
+tab_2
+```
+
+#### Ejemplo {-}
+
+Podemos tener una intuición de cómo cambian las tasas de error dependiendo
+de donde cortamos mostrando la tabla ordenada por probabilidades estimadas
+(incluimos también las covariables para entender qué variables están más
+correlacionadas con las probabilidades):
+```{r, warnings=FALSE,message=FALSE}
+library(tabplot)
+mod_1 <- glm(type ~ bmi + age, diabetes_ent, family = 'binomial')
+diabetes_pr$probs_prueba_1 <- predict(mod_1, newdata = diabetes_pr,
+                                      type = "response") 
+head(arrange(diabetes_pr, desc(probs_prueba_1)))
+tableplot(diabetes_pr, sortCol = probs_prueba_1)
+```
+
+
+La columna de probabilidad de la derecha nos dice en qué valores
+podemos cortar para obtener distintos clasificadores. Nótese que
+si cortamos más arriba, se nos escapan más positivos verdaderos
+que clasificamos como negativos, pero clasificamos a más
+negativos verdaderos como negativos. Lo opuesto ocurre 
+cuando cortamos más abajo.
+
+### Curvas de precisión-sensibilidad
+
+Para mostrar los posibles perfiles de clasificación de nuestro modelo, podemos
+mostrar las posibles combinaciones de precisión y recall bajo todos los posibles cortes:
+
+```{r}
+library(ROCR)
+pred_rocr <- prediction(predictions = diabetes_pr$probs_prueba_1, 
+                        labels = diabetes_pr$type) 
+perf <- performance(pred_rocr, measure = "prec", x.measure = "rec") 
+graf_roc_1 <- data_frame(sensibilidad = perf@x.values[[1]], precision = perf@y.values[[1]], 
+                       d = perf@alpha.values[[1]])
+
+ggplot(graf_roc_1, aes(x = sensibilidad, y = precision, colour=d)) + geom_point() +
+  geom_line() + ylim(c(0,1)) + xlim(c(0.01, 1))
+```
+
+Nota que hay algunas oscilaciones en la curva. Cuando el punto de corte sube,
+la sensibilidad siempre baja o se queda igual (hay la misma cantidad o menos
+de verdaderos positivos). Sin embargo, la precisión se calcula sobre la
+base del número predicciones positivas, y esta cantidad siempre disminuye
+cuando el punto de corte aumenta. Especialmente cuando el número de predicciones
+positivas es chico, esto puede producir oscilaciones como las de la figura.
+
+
+Ahora probamos usando todas las variables:
+
+```{r, warnings=FALSE,message=FALSE}
+mod_2 <- glm(type ~ ., diabetes_ent, family = 'binomial')
+diabetes_pr$probs_prueba_2 <- predict(mod_2, newdata = diabetes_pr,
+                                      type = "response") 
+head(arrange(diabetes_pr, desc(probs_prueba_2)))
+tableplot(diabetes_pr, sortCol = probs_prueba_2)
+```
+
+
+Y graficamos juntas:
+
+```{r}
+pred_rocr <- prediction(diabetes_pr$probs_prueba_2, diabetes_pr$type) 
+perf <- performance(pred_rocr, measure = "prec", x.measure = "rec") 
+graf_roc_2 <- data_frame(sensibilidad = perf@x.values[[1]], precision = perf@y.values[[1]], 
+                       d = perf@alpha.values[[1]])
+graf_roc_2$modelo <- 'Todas las variables'
+graf_roc_1$modelo <- 'BMI + edad'
+graf_roc <- bind_rows(graf_roc_1, graf_roc_2)
+
+ggplot(graf_roc, aes(x = sensibilidad, y = precision, colour = modelo)) + geom_point() +
+  ylim(c(0, 1)) + xlim(c(0.01, 1))
+
+```
+
+Y observamos que el modelo con todas las variables tiende a domina al modelo
+de IMC y edad.
+
+**Observaciones**:
+- Precisión y Recall (sensibilidad) son medidas muy naturales para muchos problemas,
+en particular aquellos donde la clase de positivos es relativamente chica.
+- Sin embargo, en puntos de corte altos las estimaciones de precisión son ruidosas cuando
+nuestro conjunto de prueba es relativamente chico y no existen muchos casos con
+probabilidades altas (el denominador de precisión es el número de clasificados como
+positivos)
+- Una alternativa es usar tasas de falsos positivos y tasas de falsos negativos, especialmente
+si ninguna de los dos grupos tiene pocos casos, que usan denominadores fijos (positivos y
+negativos en los datos).
+
+### Espacio ROC de clasificadores
+
+
+Otro punto de vista es visualizar el desempeño de cada uno de estos clasificadores construidos
+con puntos de corte
+mapeándolos a las coordenadas de tasa de falsos positivos
+(1-especificidad) y sensibilidad:
+
+```{r, fig.width = 5, fig.asp =0.9}
+clasif_1 <- data.frame(
+  corte = c('0.3','0.5','0.7','perfecto','azar'),
+  tasa_falsos_pos=c(0.24,0.08,0.02,0,0.7),
+  sensibilidad =c(0.66, 0.46,0.19,1,0.7))
+ggplot(clasif_1, aes(x=tasa_falsos_pos, y=sensibilidad,
+  label=corte)) + geom_point() + 
+  geom_abline(intercept=0, slope=1) +
+  xlim(c(0,1)) +ylim(c(0,1)) + geom_text(hjust=-0.3, col='red')+
+  xlab('1-especificidad (tasa falsos pos)')
+
+```
 
 
 
+1. Nótese que agregamos otros dos clasificadores, uno perfecto, que tiene tasa de falsos positivos igual a 0 y sensibilidad igual a 1.
+2. En esta gráfica, un clasificador $G_2$ que está arriba a la izquierda de $G_1$
+domina a $G_1$, pues tiene mejor especificidad y mejor sensibilidad. Entre los clasificadores 0.3, 0.5 y 0.7 de la gráfica, no hay ninguno que domine a otro.
+3. Todos los clasificadores en la diagonal son equivalentes a un clasificador al azar. ¿Por qué? La razón es que si cada vez que vemos un nuevo caso lo clasificamos como positivo con probabilidad $p$ fija y arbitraria. Esto implica que cuando veamos un caso positivo, la probabilidad de ’atinarle’ es de p (sensibilidad), y cuando vemos un negativo, la probabilidad de equivocarnos también es de 1-p (tasa de falsos positivos), por lo que
+la espcificidad es p también. De modo que este clasificador al azar está en la diagonal.
+4. ¿Qué podemos decir acerca de clasificadores que caen por debajo de la diagonal? Estos son clasificadores particularmente malos, pues existen clasificadores con mejor especificidad y/o sensibilidad que son clasificadores al azar! Sin embargo, se puede construir un mejor clasificador volteando las predicciones, lo que cambia sensibilidad por tasa de falsos positivos.
+5. ¿Cuál de los tres clasificadores es el mejor? En términos de la tasa de incorrectos, el de corte 0.5. Sin embargo, para otros propósitos puede ser razonable escoger alguno de los otros.
+
+## Perfil de un clasificador binario y curvas ROC
+
+En lugar de examinar cada punto de corte por separado, podemos hacer el análisis de todos los posibles puntos de corte mediante la curva ROC (receiver operating characteristic, de ingeniería).
 
 
+```{block2, type='comentario'}
+ Para un problema de clasificación binaria, dadas estimaciones $\hat{p}(x)$, 
+ la curva ROC grafica todos los pares de (1-especificidad, sensibilidad) para cada posible punto de corte $\hat{p}(x) > d$.
+ 
+```
+
+ 
+Vamos a graficar todos los pares (1-especificidad, sensibilidad)
+para cada punto de corte $d$ de estas probabilidades.
+
+```{r, message=FALSE, warning=FALSE}
+library(ROCR)
+pred_rocr <- prediction(diabetes_pr$probs_prueba_1, diabetes_pr$type) 
+perf <- performance(pred_rocr, measure = "sens", x.measure = "fpr") 
+graf_roc_1 <- data_frame(tfp = perf@x.values[[1]], sens = perf@y.values[[1]], 
+                       d = perf@alpha.values[[1]])
+
+ggplot(graf_roc_1, aes(x = tfp, y = sens, colour=d)) + geom_point() +
+  xlab('1-especificidad') + ylab('Sensibilidad') 
+```
+
+En esta gráfica podemos ver todos los clasificadores posibles basados
+en las probabilidades de clase. Podemos usar estas curvas como evaluación
+de nuestros clasificadores, dejando para más tarde la selección del punto de
+corte, si esto es necesario (por ejemplo, dependiendo de los costos de cada
+tipo de error).
+
+También podemos definir una medida resumen del desempeño de un clasificador según
+esta curva:
+
+```{block2, type='comentario'}
+La medida AUC (area under the curve) para un clasificador es el área 
+bajo la curva generada por los pares sensibilidad-especificidad de la curva ROC.
+```
+
+```{r}
+auc_1 <- performance(pred_rocr, measure = 'auc')@y.values
+auc_1[[1]]
+```
+
+
+También es útil para comparar modelos. Consideremos el modelo de los datos
+de diabetes que incluyen todas las variables:
+```{r, warnings=FALSE,message=FALSE}
+mod_2 <- glm(type ~ ., diabetes_ent, family = 'binomial')
+diabetes_pr$probs_prueba_2 <- predict(mod_2, newdata = diabetes_pr,
+                                      type = "response") 
+head(arrange(diabetes_pr, desc(probs_prueba_2)))
+tableplot(diabetes_pr, sortCol = probs_prueba_2)
+```
+
+
+Y graficamos juntas:
+
+```{r}
+pred_rocr <- prediction(diabetes_pr$probs_prueba_2, diabetes_pr$type) 
+perf <- performance(pred_rocr, measure = "sens", x.measure = "fpr") 
+auc_2 <- performance(pred_rocr, measure = "auc")@y.values
+graf_roc_2 <- data_frame(tfp = perf@x.values[[1]], sens = perf@y.values[[1]], 
+                       d = perf@alpha.values[[1]])
+
+graf_roc_2$modelo <- 'Todas las variables'
+graf_roc_1$modelo <- 'Solo glucosa'
+graf_roc <- bind_rows(graf_roc_1, graf_roc_2)
+
+ggplot(graf_roc, aes(x = tfp, y = sens, colour = modelo)) + geom_point() +
+  xlab('1-especificidad') + ylab('Sensibilidad') 
+```
+
+Comparación auc:
+
+```{r}
+auc_1
+auc_2
+```
+
+En este ejemplo, vemos que casi no importa que perfil de especificidad y sensibilidad busquemos: el clasificador que usa todas las variables
+domina casi siempre al clasificador que sólo utiliza IMC y edad. 
 
