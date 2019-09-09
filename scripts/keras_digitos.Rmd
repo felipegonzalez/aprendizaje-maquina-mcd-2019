@@ -1,0 +1,93 @@
+---
+title: "Clasificación multinomial"
+output: html_notebook
+---
+
+```{r, message = FALSE}
+library(tidyverse)
+library(keras)
+set.seed(112)
+use_session_with_seed(421) # ayuda a reproducibilidad, pero más lento
+zip_train <- read_csv("../datos/zip-train.csv") 
+zip_test <- read_csv("../datos/zip-test.csv")
+zip_train_x <- zip_train %>% select(-X1) %>% as.matrix
+zip_test_x <- zip_test %>% select(-V1) %>% as.matrix
+zip_train_y <- zip_train$X1
+zip_test_y <- zip_test$V1
+```
+
+```{r}
+num_clases <- 10
+alto <- 16
+ancho <- 16
+
+x_train <- array_reshape(as.matrix(zip_train_x), c(nrow(zip_train_x), alto, ancho, 1))
+dim(x_train)
+x_test <- array_reshape(as.matrix(zip_test_x), c(nrow(zip_test_x), alto, ancho,  1))
+
+entrada_dim <- c(alto, ancho, 1)
+cat('x_train_shape:', dim(x_train), '\n')
+cat(nrow(x_train), 'train samples\n')
+cat(nrow(x_test), 'test samples\n')
+
+# Convertir a categóricas
+y_train <- to_categorical(zip_train_y, num_clases)
+y_test <- to_categorical(zip_test_y, num_clases)
+```
+
+
+Definimos regresión logística multinomial
+```{r}
+model <- keras_model_sequential() %>%
+  layer_flatten() %>% 
+  layer_dense(units = num_clases, activation = "softmax")
+```
+
+
+```{r}
+model %>% compile(
+  loss = loss_categorical_crossentropy,
+  optimizer = optimizer_sgd(lr = 0.2),
+  metrics = c('accuracy') # ver tasa de correctos
+)
+# Entrenar con descenso en gradiente
+history <- model %>% fit(
+  zip_train_x, y_train,
+  batch_size = nrow(x_train),
+  validation_split = 0.5,
+  verbose = 0,
+  epochs = 500)
+
+```
+
+
+```{r}
+scores <- model %>% evaluate(
+  x_test, y_test, verbose = 0
+)
+
+# Output metrics
+cat('Prueba - pérdida (entropía cruzada):', scores[[1]], '\n')
+cat('Prueba - tasa de correctos :', scores[[2]], '\n')
+
+```
+
+Ahora corremos más iteraciones:
+
+
+```{r}
+model %>% fit(
+  zip_train_x, y_train,
+  batch_size = nrow(x_train),
+  epochs = 6000,
+  validation_split = 0.5,
+  verbose = 0
+)
+scores <- model %>% evaluate(
+  x_test, y_test
+)
+
+# Output metrics
+cat('Prueba - pérdida (entropía cruzada):', scores[[1]], '\n')
+cat('Prueba - tasa de correctos :', scores[[2]], '\n')
+```
