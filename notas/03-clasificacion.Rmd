@@ -736,7 +736,7 @@ Verificamos cálculo de gradiente:
 ```
 Y hacemos descenso:
 ```{r, fig.width=5, fig.asp=0.8}
-iteraciones <- descenso(200, z_0 = c(0,0), eta = 0.1, h_deriv = grad)
+iteraciones <- descenso(1000, z_0 = c(0,0), eta = 0.1, h_deriv = grad)
 tail(iteraciones, 20)
 #Checamos devianza
 qplot(1:nrow(iteraciones), apply(iteraciones, 1, devianza)) +
@@ -755,6 +755,7 @@ devianza(iteraciones[200,])
 La devianza que obtenemos con nuestros cálculos es:
 
 ```{r}
+mod_1$deviance / nrow(dat_ent)
 devianza(iteraciones[200,])
 ```
 

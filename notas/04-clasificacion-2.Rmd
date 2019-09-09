@@ -1,0 +1,749 @@
+# Más sobre problemas de clasificación
+
+```{r, include = FALSE}
+library(tidyverse)
+cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+theme_set(theme_minimal())
+```
+
+En problemas de clasificación, queremos usar información del modelo para tomar cierta acción. Ejemplos
+típicos de que requieren de resolver un problema de clasificación son:
+
+- Dar un tratamiento a una persona para combatir una enfermedad. El tratamiento tienen costos monetarios y efectos secundarios. ¿Cuándo deberíamos tratar o hacer seguimiento de una persona?
+- Decidir si hacemos un descuento a un cliente que tiene probabilidad alta de cancelar su contrato en los siguientes 3 meses.
+- Para una búsqueda dada de restaurantes, decidir qué restaurantes debemos poner en las primeras posiciones de los resultados de la búsqueda.
+- Decidir si una imagen contiene una persona o no, con el fin de activar una alarma en ciertas condiciones.
+
+En la mayoría de estos ejemplos, *no queremos encontrar un clasificador si un cliente va abandonar o no, tiene una enferdad o no o si un segmento de imagen contiene una persona o no, etc*. Esto solo aplica
+para problemas con tasas de ruido muy bajas donde podemos separar claramente las clases - lo cual no es tan común, especialmente en problemas de negocios, por ejemplo.
+
+Igual que en regresión producir **intervalos de predicción** (en problemas que no son de ruido bajo) permiten tomar mejores decisiones *downstream* del modelo, en clasificación producir **probabilidades de clase** permite tomar mejores decisiones que toman en cuenta aspectos del problema particular que nos interesa.
+
+En todos los problemas de arriba, la dificultad es que al tomar la decisión de clasificar un
+caso un una clase específica, para los cuales se va a llevar a cabo una acción, diversos
+costos intervienen cuando cometemos distintos errores:
+
+- Por ejemplo, diagnosticar a alguien con una enfermedad cuando no la tiene
+tiene consecuencias distintas a diagnosticar como libre de enfermedad a alguien
+que la tiene. Estas consecuencias dependen de cómo son son los tratamientos consecuentes, y de qué tan peligrosa es la enfermedad.
+
+- Cuando usamos un buscador como Google, es cualitativamente diferente que el
+buscador omita resultados relevantes a que nos presente resultados irrelevantes.
+
+En general, los costos de los distintos errores son distintos, y en muchos
+problemas quiséramos entenderlos y controlarlos individualmente. Aunque en teoría
+podríamos asignar costos a los errores y definir una función de pérdida apropiada,
+en la práctica esto muchas veces no es tan fácil o deseable. 
+
+Cuando producimos salidas que son clasificadores "duros" (asignan a una clase, por ejemplo, usando máxima probabilidad u otro método) varios problemas pueden aparecer. El desempeño de clasificadores
+duros generalmente se mide con variación de *la matriz de confusión*:
+
+
+```{block2, type='comentario'}
+**Matriz de confusión**.
+Sea $\hat{G}$ un clasificador. La matriz de confusión $C$ de $\hat{G}$ está 
+dada por $C_{i,j} =$ número de casos de la clase verdadera $j$ que son clasificados como clase $i$
+ por el clasificador
+```
+
+#### Ejemplo {-} 
+
+En un ejemplo de tres clases, podríamos obtener la matriz de confusión:
+
+```{r, echo=FALSE}
+tabla_1 <- data.frame(A=c(50,20,20), B=c(2,105,10), C=c(0,10,30))
+rownames(tabla_1) <- c('A.pred', 'B.pred', 'C.pred')
+tabla_1 <- as.table(as.matrix(tabla_1))
+knitr::kable(tabla_1)
+```
+
+Esto quiere decir que de 90 casos de clase $A$, sólo clasificamos
+a 50 en la clase correcta, de 117 casos de clase $B$, acertamos en 105, etcétera.
+Podemos ver esta tabla de distintas formas, por ejemplo, usando porcentajes
+por columna, nos dice cómo se distribuyen los casos de cada clase:
+
+```{r}
+knitr::kable(round(prop.table(tabla_1, 2),2))
+```
+
+Mientras que una tabla de porcentajes por renglón nos muestra
+qué pasa cada vez que hacemos una predicción dada:
+
+```{r}
+knitr::kable(round(prop.table(tabla_1, 1),2))
+```
+
+Ahora pensemos cómo podría sernos de utilidad esta tabla. Discute:
+
+- El clasificador fuera uno de severidad de emergencias en un hospital,
+donde A=requiere atención inmediata B=urgente C=puede posponerse (poco adecuado).
+
+- El clasificador fuera de tipos de cliente de un negocio. Por ejemplo,
+A = cliente de gasto alto, B=cliente medio, C=cliente de gasto bajo. Tenemos
+un plan para incrementar la satisfacción de los clientes: para clientes de gasto
+bajo cuesta muy poco, para los clientes de gasto medio tiene precio bajo,
+y cuesta mucho para los clientes de gasto alto (más adecuado).
+
+La tasa de incorrectos es la misma en los dos ejemplos, pero la adecuación
+del clasificador es muy diferente.
+
+
+Nótese que un clasificador bueno, en general, es uno
+que tiene la mayor parte de los casos en la diagonal de la matriz
+de confusión. Es difícil decir entonces cuándo un clasificador "duro" es bueno
+o malo sin tener más datos acerca del problema (a menos que su tasa de incorrectos sea
+cercana a 0).
+
+## Ejemplo: decisiones basadas en probabilidades
+
+Supongamos que tenemos un plan para retener a clientes. Construimos un modelo
+que nos da la probabilidad de abandono para cada cliente. Una primera reacción
+es poner un punto de corte para etiquetar a los clientes como "abandonadores" o
+"no abandonadores". Esto no es tan buena idea.
+
+Supongamos que 
+
+- el tratamiento de retención cuesta 1200 pesos por cliente,
+- estimamos mediante pruebas que nuestro tratamiento reduce la probabilidad de abandono
+en un 60\%
+- Tenemos algún tipo de valuación del valor de los clientes.
+
+Usando las probabilidades podemos decidir en estrategias de aplicación del tratamiento.
+Simulamos una cartera de clientes y sus valuaciones (que suponemos constantes, pero 
+normalmente también son salidas de modelos predictivos). Las probabilidades de abandono
+suponemos que están dada por un modelo:
+
+```{r}
+clientes <- tibble(id = 1:20000, valor = 10000) %>% 
+    mutate(prob_pred = rbeta(length(valor), 1, 2)) 
+```
+
+```{r, fig.width = 5, fig.height = 3}
+calc_perdida <- function(corte, factor_ret, costo){
+    perdida_no_trata <- filter(clientes, prob_pred < corte) %>% 
+        mutate(costo = ifelse(rbinom(length(prob_pred), 1, prob_pred) == 1, valor, 0)) %>% 
+        summarise(total = sum(costo)) %>% 
+        pull(total)
+    perdida_trata <- filter(clientes, prob_pred >= corte) %>% 
+        mutate(costo = ifelse(rbinom(length(prob_pred), 1, prob_pred*factor_ret) == 1, valor, 0)) %>% 
+        summarise(total = sum(costo)) %>% 
+        pull(total)
+    perdida_cf <- filter(clientes, prob_pred >= corte) %>%  
+        mutate(costo = ifelse(rbinom(length(prob_pred), 1, prob_pred) == 1, valor, 0)) %>% 
+        summarise(total = sum(costo)) %>% 
+        pull(total)
+    total <- perdida_no_trata +  perdida_trata - (perdida_no_trata + perdida_cf) +
+      costo*nrow(filter(clientes, prob_pred > corte)) 
+    total
+}
+perdidas_sim <- map_dfr(rep(seq(0,1, 0.1), 50), 
+    function(x){
+      perdida_sim <- calc_perdida(x, 0.6, 1000)
+      tibble(perdida = perdida_sim, corte = x)
+    }) %>% bind_rows 
+
+ggplot(perdidas_sim, aes(x = factor(corte), y = - perdida / 1e6)) + 
+  geom_boxplot() + ylab("Ganancia vs Ninguna acción (millones)") +
+  xlab("Corte inferior de tratamiento (prob)")
+```
+
+¿Dónde habría que hacer el punto de corte para tratar a los clientes?  
+
+
+## Análisis de error para clasificadores binarios
+
+En muchas ocasiones, los costos y las decisiones todavía no están bien definidas,
+y requierimos una manera de evaluar los modelos que sea útil para considerar si 
+el desempeño del modelo es apropiado. En estos casos podemos hacer un análisis de
+error simplificado que ayude a dirigir nuestro trabajo. 
+
+Cuando la variable a predecir es binaria (dos clases), podemos
+etiquetar una clase como *positiva* y otra como *negativa*. En el fondo
+no importa cómo catalogemos cada clase, pero para problemas particulares
+una asignación puede ser más natural. Por ejemplo, en diagnóstico de 
+enfermedades, positivo=tiene la enfermedad, en análisis de crédito,
+positivo=cae en impago, en sistemas de recomendacion, positivo = le gusta
+el producto X, en recuperación de textos, positivo=el documento es relevante a la
+búsqueda, etc.
+
+Supondremos entonces que hemos construido un clasificador $\hat{G}_\alpha$ a partir
+de probabilidades estimadas $\hat{p}_1(x) > \alpha$. Por ejemplo, podemos construir
+el clasificador de Bayes clasificando como *positivo* a todos los casos $x$ que
+complan $\hat{p}_1(x) > 0.5$, y negativos al resto.
+
+
+```{block2, type='comentario'}
+Hay dos tipos de errores en un clasificador binario (positivo - negativo):
+
+- Falsos positivos (fp): clasificar como positivo a un caso negativo.
+- Falsos negativos (fn): clasificar como negativo a un caso positivo.
+
+A los casos clasificados correctamente les llamamos positivos verdaderos (pv)
+y negativos verdaderos (nv).
+```
+
+La matriz de confusion es entonces
+
+
+```{r, warning=FALSE, message=FALSE}
+tabla <- data_frame(' ' = c('positivo.pred','negativo.pred','total'),
+                    'positivo'=c('vp','fn','pos'),
+                    'negativo'=c('fp','vn','neg'),
+                    'total' = c('pred.pos','pred.neg',''))
+knitr::kable(tabla)
+```
+
+
+
+Nótese que un clasificador bueno, en general, es uno
+que tiene la mayor parte de los casos en la diagonal de la matriz
+de confusión.
+
+Podemos estudiar a nuestro clasificador en términos de las proporciones de casos que caen en cada celda, que dependen del desempeño del clasificador en cuanto a casos positivos y negativos. La nomenclatura puede ser
+confusa, pues en distintas áreas se usan distintos nombres para estas proporciones:
+
+- Tasa de falsos positivos
+$$\frac{fp}{fp+nv}=\frac{fp}{neg}$$
+
+- Tasa de falsos negativos
+$$\frac{fn}{pv+fn}=\frac{fn}{pos}$$
+
+- Especificidad
+$$\frac{vn}{fp+vn}=\frac{vn}{neg}$$
+
+- Sensibilidad o Recall
+$$\frac{vp}{vp+fn}=\frac{vp}{pos}$$ 
+
+
+Y también otras que tienen como base las predicciones:
+
+- Valor predictivo positivo o Precisión
+$$\frac{vp}{vp+fp}=\frac{vp}{pred.pos}$$
+
+- Valor predictivo negativo
+$$\frac{vn}{fn+vn}=\frac{vn}{pred.neg}$$
+
+
+Dependiendo de el tema y el objetivo hay medidas más naturales que otras:
+
+- En búsqueda y recuperación de documentos o imagenes, o detección de fraude ( donde positivo = el documento es relevante / la transacción es fraudulenta y negativo = el documento no es relevante / transacción normal), se usa más comunmente precisión y recall. Esto es porque nos interesa
+saber: de todos los resultados con predicción positiva, 
+qué porcentaje son relevantes (precisión), y también, 
+de todos los documentos relevantes (positivos), cuáles son recuperados (recall/sensibilidad).
+
+Un clasificador *preciso* es uno que tal que una fracción alta de sus predicciones positivas son
+positivos verdaderos. Sin embargo, podría no ser muy *sensible*: de todos los positivos que hay, 
+solamente clasifica como positivos a una fracción chica. Conversamente, un clasificador podría
+ser muy sensible: captura una fracción alta de los positivos, pero también clasifica como
+positivos a muchos casos que son negativos (*precisión* baja).
+
+- En estadística muchas veces se usa sensibilidad (recall) y especificidad (cuántos negativos descartamos al clasificar como negativos). Por ejemplo, si se tratara
+de una prueba para detectar riesgo de una enfermedad, sensibilidad nos dice qué 
+porcentaje de los casos riesgosos estamos capturando, y especificidad nos dice qué 
+tan bien excluimos a los casos no riesgosos (especificidad).
+
+```{block2, type='comentario'}
+Cada clasificador tiene un balance distinto precisión y sensibilidad (recall). 
+Muchas veces no escogemos clasificadores por la tasa
+de incorrectos solamente, sino que intentamos buscar un balance adecuado entre el comportamiento de clasificación para positivos y para negativos.
+```
+
+### Medidas resumen de desempeño {-}
+
+La primera medida resumen que vimos es el error de clasificación, que no toma en
+cuenta el tipo de errores:
+
+- **Tasa de clasificación incorrecta**
+$$\frac{fn+fv}{neg+pos}$$
+Y existen otras medidas que intentan resumir los dos tipos de errores de distinta manera,
+como
+
+- **Medida F** (media armónica de precisión y recall)
+$$2\frac{precision \cdot recall}{precision +  recall}$$
+Se usa la la media armónica que penaliza más fuertemente desempeño malo en
+alguna de nuestras dos medidas (precisión y recall) que el promedio armónico.
+
+
+
+#### Ejemplo {-}
+Si precision = 0.01 (muy malo) y recall = 1 (excelente), o recall=0.01 y precisión = 1 (excelente),
+la media usual considera igual de buenos estos dos clasificadores. A su vez, estos
+dos se califican similar a un clasificador con precision = 0.5 y recall = 0.5. 
+Sin embargo, la media armónica (F) da un score mucho más bajo a los primeros dos
+clasificadores:
+```{r}
+media_armonica <- function(x){
+    1/mean(1/x)
+}
+media_armonica(c(0.01, 1))
+media_armonica(c(0.5, 0.5))
+```
+
+- **AUC** (area bajo la curva ROC) que veremos más adelante.
+
+
+#### Ejercicio {-}
+Calcular la matriz de confusión (sobre la muestra de prueba) para el
+clasificador logístico de diabetes en términos de imc y edad. Calcula 
+adicionalmente con la muestra de prueba sus valores de especificidad y sensibilidad, y precisión y recall. 
+
+```{r, warnings=FALSE, messages=FALSE}
+diabetes_ent <- as_tibble(MASS::Pima.tr)
+diabetes_pr <- as_tibble(MASS::Pima.te)
+mod_1 <- glm(type ~ bmi + age, data = diabetes_ent, family = 'binomial')
+preds_prueba <- predict(mod_1, newdata = diabetes_pr, type ='response')
+# rellena esta linea en términos de preds_prueba
+clase_pred <- preds_prueba > 0.5
+confusion <- table(clase_pred, diabetes_pr$type)
+confusion
+```
+
+Ahora calculamos recall y precisión:
+
+```{r}
+sensibilidad <- confusion[2, 2] / sum(confusion[, 2])
+precision <- confusion[2, 2] / sum(confusion[2, ])
+sprintf("Precisión: %.2f, Sensibilidad (recall): %.2f", precision, sensibilidad)
+```
+
+
+### Puntos de corte para un clasificador binario
+
+¿Qué sucede cuando el perfil de precisión y sensibilidad (o especificidad y sensibilidad) de un 
+clasificador binario no es apropiado para nuestros fines?
+Recordemos que una vez que hemos estimado con $\hat{p}_1(x)$, nuestra regla de clasificación es:
+
+1. Predecir positivo si $\hat{p}_1(x) > 0.5$, 
+2. Predecir negativo si $\hat{p}_1(x) \leq 0.5.$
+
+Esto sugiere una regla alternativa:
+
+Para $0 < d < 1$, podemos utilizar nuestras estimaciones $\hat{p}_1(x)$ para construir un clasificador alternativo poniendo:
+
+1. Predecir positivo si $\hat{p}_1(x) > d$, 
+2. Predecir negativo si $\hat{p}_1(x) \leq d$.
+
+
+Distintos valores de $d$ dan distintos perfiles de sensibilidad-especificidad para una misma estimación de las probabilidades condicionales de clase:
+Para minimizar la tasa de incorrectos conviene poner $d = 0.5$. Sin embargo, es común que este no es el único fin de un clasificador bueno (pensar en ejemplo de fraude).
+
+- Cuando incrementamos d, quiere decir que exigimos estar más seguros de que un caso es positivo para clasificarlo como positivo. Esto quiere decir que la sensibilidad (recall) tiende a ser más chica.
+Por otro lado la precisión tiende a aumentar, pues el porcentaje de verdaderos positivos entre nuestras predicciones positivas será mayor. También la especificidad tiende a ser más grande.
+
+#### Ejemplo {-}
+Por ejemplo, si en el caso de diabetes incrementamos el punto de corte a 0.7:
+```{r}
+tab <- table(preds_prueba > 0.7, diabetes_pr$type)
+tab
+tab_1 <- prop.table(tab, 1)
+tab_2 <- prop.table(tab, 2)
+tab_1
+tab_2
+```
+
+La precisión mejora a `r round(tab_1[2,2], 2)`,
+pero la sensibilidad (recall) se deteriora a `r round(tab_2[2,2],2)`
+
+
+- Cuando hacemos más chico d, entonces exigimos estar más seguros de que un caso es negativo para clasificarlo como negativo. Esto aumenta la sensibilidad, pero la precisión baja.
+Por ejemplo, si en el caso de diabetes ponemos el punto de corte en 0.3:
+
+```{r}
+tab <- table(preds_prueba > 0.3, diabetes_pr$type)
+tab
+tab_1 <- prop.table(tab, 1)
+tab_2 <- prop.table(tab, 2)
+tab_1
+tab_2
+```
+
+#### Ejemplo {-}
+
+Podemos tener una intuición de cómo cambian las tasas de error dependiendo
+de donde cortamos mostrando la tabla ordenada por probabilidades estimadas
+(incluimos también las covariables para entender qué variables están más
+correlacionadas con las probabilidades):
+```{r, warnings=FALSE,message=FALSE}
+library(tabplot)
+mod_1 <- glm(type ~ bmi + age, diabetes_ent, family = 'binomial')
+diabetes_pr$probs_prueba_1 <- predict(mod_1, newdata = diabetes_pr,
+                                      type = "response") 
+head(arrange(diabetes_pr, desc(probs_prueba_1)))
+tableplot(diabetes_pr, sortCol = probs_prueba_1)
+```
+
+
+La columna de probabilidad de la derecha nos dice en qué valores
+podemos cortar para obtener distintos clasificadores. Nótese que
+si cortamos más arriba, se nos escapan más positivos verdaderos
+que clasificamos como negativos, pero clasificamos a más
+negativos verdaderos como negativos. Lo opuesto ocurre 
+cuando cortamos más abajo.
+
+### Curvas de precisión-sensibilidad
+
+Para mostrar los posibles perfiles de clasificación de nuestro modelo, podemos
+mostrar las posibles combinaciones de precisión y recall bajo todos los posibles cortes:
+
+```{r}
+library(ROCR)
+pred_rocr <- prediction(predictions = diabetes_pr$probs_prueba_1, 
+                        labels = diabetes_pr$type) 
+perf <- performance(pred_rocr, measure = "prec", x.measure = "rec") 
+graf_roc_1 <- data_frame(sensibilidad = perf@x.values[[1]], precision = perf@y.values[[1]], 
+                       d = perf@alpha.values[[1]])
+
+ggplot(graf_roc_1, aes(x = sensibilidad, y = precision, colour=d)) + geom_point() +
+  geom_line() + ylim(c(0,1)) + xlim(c(0.01, 1))
+```
+
+Nota que hay algunas oscilaciones en la curva. Cuando el punto de corte sube,
+la sensibilidad siempre baja o se queda igual (hay la misma cantidad o menos
+de verdaderos positivos). Sin embargo, la precisión se calcula sobre la
+base del número predicciones positivas, y esta cantidad siempre disminuye
+cuando el punto de corte aumenta. Especialmente cuando el número de predicciones
+positivas es chico, esto puede producir oscilaciones como las de la figura.
+
+
+Ahora probamos usando todas las variables:
+
+```{r, warnings=FALSE,message=FALSE}
+mod_2 <- glm(type ~ ., diabetes_ent, family = 'binomial')
+diabetes_pr$probs_prueba_2 <- predict(mod_2, newdata = diabetes_pr,
+                                      type = "response") 
+head(arrange(diabetes_pr, desc(probs_prueba_2)))
+tableplot(diabetes_pr, sortCol = probs_prueba_2)
+```
+
+
+Y graficamos juntas:
+
+```{r}
+pred_rocr <- prediction(diabetes_pr$probs_prueba_2, diabetes_pr$type) 
+perf <- performance(pred_rocr, measure = "prec", x.measure = "rec") 
+graf_roc_2 <- data_frame(sensibilidad = perf@x.values[[1]], precision = perf@y.values[[1]], 
+                       d = perf@alpha.values[[1]])
+graf_roc_2$modelo <- 'Todas las variables'
+graf_roc_1$modelo <- 'BMI + edad'
+graf_roc <- bind_rows(graf_roc_1, graf_roc_2)
+
+ggplot(graf_roc, aes(x = sensibilidad, y = precision, colour = modelo)) + geom_point() +
+  ylim(c(0, 1)) + xlim(c(0.01, 1))
+
+```
+
+Y observamos que el modelo con todas las variables tiende a domina al modelo
+de IMC y edad.
+
+**Observaciones**:
+- Precisión y Recall (sensibilidad) son medidas muy naturales para muchos problemas,
+en particular aquellos donde la clase de positivos es relativamente chica.
+- Sin embargo, en puntos de corte altos las estimaciones de precisión son ruidosas cuando
+nuestro conjunto de prueba es relativamente chico y no existen muchos casos con
+probabilidades altas (el denominador de precisión es el número de clasificados como
+positivos)
+- Una alternativa es usar tasas de falsos positivos y tasas de falsos negativos, especialmente
+si ninguna de los dos grupos tiene pocos casos, que usan denominadores fijos (positivos y
+negativos en los datos).
+
+### Espacio ROC de clasificadores
+
+
+Otro punto de vista es visualizar el desempeño de cada uno de estos clasificadores construidos
+con puntos de corte
+mapeándolos a las coordenadas de tasa de falsos positivos
+(1-especificidad) y sensibilidad:
+
+```{r, fig.width = 5, fig.asp =0.9}
+clasif_1 <- data.frame(
+  corte = c('0.3','0.5','0.7','perfecto','azar'),
+  tasa_falsos_pos=c(0.24,0.08,0.02,0,0.7),
+  sensibilidad =c(0.66, 0.46,0.19,1,0.7))
+ggplot(clasif_1, aes(x=tasa_falsos_pos, y=sensibilidad,
+  label=corte)) + geom_point() + 
+  geom_abline(intercept=0, slope=1) +
+  xlim(c(0,1)) +ylim(c(0,1)) + geom_text(hjust=-0.3, col='red')+
+  xlab('1-especificidad (tasa falsos pos)')
+
+```
+
+
+
+1. Nótese que agregamos otros dos clasificadores, uno perfecto, que tiene tasa de falsos positivos igual a 0 y sensibilidad igual a 1.
+2. En esta gráfica, un clasificador $G_2$ que está arriba a la izquierda de $G_1$
+domina a $G_1$, pues tiene mejor especificidad y mejor sensibilidad. Entre los clasificadores 0.3, 0.5 y 0.7 de la gráfica, no hay ninguno que domine a otro.
+3. Todos los clasificadores en la diagonal son equivalentes a un clasificador al azar. ¿Por qué? La razón es que si cada vez que vemos un nuevo caso lo clasificamos como positivo con probabilidad $p$ fija y arbitraria. Esto implica que cuando veamos un caso positivo, la probabilidad de ’atinarle’ es de p (sensibilidad), y cuando vemos un negativo, la probabilidad de equivocarnos también es de 1-p (tasa de falsos positivos), por lo que
+la espcificidad es p también. De modo que este clasificador al azar está en la diagonal.
+4. ¿Qué podemos decir acerca de clasificadores que caen por debajo de la diagonal? Estos son clasificadores particularmente malos, pues existen clasificadores con mejor especificidad y/o sensibilidad que son clasificadores al azar! Sin embargo, se puede construir un mejor clasificador volteando las predicciones, lo que cambia sensibilidad por tasa de falsos positivos.
+5. ¿Cuál de los tres clasificadores es el mejor? En términos de la tasa de incorrectos, el de corte 0.5. Sin embargo, para otros propósitos puede ser razonable escoger alguno de los otros.
+
+## Perfil de un clasificador binario y curvas ROC
+
+En lugar de examinar cada punto de corte por separado, podemos hacer el análisis de todos los posibles puntos de corte mediante la curva ROC (receiver operating characteristic, de ingeniería).
+
+
+```{block2, type='comentario'}
+ Para un problema de clasificación binaria, dadas estimaciones $\hat{p}(x)$, 
+ la curva ROC grafica todos los pares de (1-especificidad, sensibilidad) para cada posible punto de corte $\hat{p}(x) > d$.
+ 
+```
+
+ 
+Vamos a graficar todos los pares (1-especificidad, sensibilidad)
+para cada punto de corte $d$ de estas probabilidades.
+
+```{r, message=FALSE, warning=FALSE}
+library(ROCR)
+pred_rocr <- prediction(diabetes_pr$probs_prueba_1, diabetes_pr$type) 
+perf <- performance(pred_rocr, measure = "sens", x.measure = "fpr") 
+graf_roc_1 <- data_frame(tfp = perf@x.values[[1]], sens = perf@y.values[[1]], 
+                       d = perf@alpha.values[[1]])
+
+ggplot(graf_roc_1, aes(x = tfp, y = sens, colour=d)) + geom_point() +
+  xlab('1-especificidad') + ylab('Sensibilidad') 
+```
+
+En esta gráfica podemos ver todos los clasificadores posibles basados
+en las probabilidades de clase. Podemos usar estas curvas como evaluación
+de nuestros clasificadores, dejando para más tarde la selección del punto de
+corte, si esto es necesario (por ejemplo, dependiendo de los costos de cada
+tipo de error).
+
+También podemos definir una medida resumen del desempeño de un clasificador según
+esta curva:
+
+```{block2, type='comentario'}
+La medida AUC (area under the curve) para un clasificador es el área 
+bajo la curva generada por los pares sensibilidad-especificidad de la curva ROC.
+```
+
+```{r}
+auc_1 <- performance(pred_rocr, measure = 'auc')@y.values
+auc_1[[1]]
+```
+
+
+También es útil para comparar modelos. Consideremos el modelo de los datos
+de diabetes que incluyen todas las variables:
+```{r, warnings=FALSE,message=FALSE}
+mod_2 <- glm(type ~ ., diabetes_ent, family = 'binomial')
+diabetes_pr$probs_prueba_2 <- predict(mod_2, newdata = diabetes_pr,
+                                      type = "response") 
+head(arrange(diabetes_pr, desc(probs_prueba_2)))
+tableplot(diabetes_pr, sortCol = probs_prueba_2)
+```
+
+
+Y graficamos juntas:
+
+```{r}
+pred_rocr <- prediction(diabetes_pr$probs_prueba_2, diabetes_pr$type) 
+perf <- performance(pred_rocr, measure = "sens", x.measure = "fpr") 
+auc_2 <- performance(pred_rocr, measure = "auc")@y.values
+graf_roc_2 <- data_frame(tfp = perf@x.values[[1]], sens = perf@y.values[[1]], 
+                       d = perf@alpha.values[[1]])
+
+graf_roc_2$modelo <- 'Todas las variables'
+graf_roc_1$modelo <- 'Solo glucosa'
+graf_roc <- bind_rows(graf_roc_1, graf_roc_2)
+
+ggplot(graf_roc, aes(x = tfp, y = sens, colour = modelo)) + geom_point() +
+  xlab('1-especificidad') + ylab('Sensibilidad') 
+```
+
+Comparación auc:
+
+```{r}
+auc_1
+auc_2
+```
+
+En este ejemplo, vemos que casi no importa que perfil de especificidad y sensibilidad busquemos: el clasificador que usa todas las variables
+domina casi siempre al clasificador que sólo utiliza IMC y edad. 
+
+
+
+
+## Regresión logística para más de 2 clases
+
+Consideramos ahora un problema con más de dos clases, de manera que $G ∈ {1,2,...,K}$
+($K$ clases), y tenemos $X = (X1 ...,Xp)$ entradas.
+¿Cómo generalizar el modelo de regresión logística para este problema?
+Una estrategia es la de uno contra todos:
+
+En clasificación *uno contra todos*, hacemos
+
+1. Para cada clase $g\in\{1,\ldots,K\}$ entrenamos un modelo de regresión
+logística (binaria) $\hat{p}^{(g)}(x)$, tomando como positivos a los casos de 1
+clase $g$, y como negativos a todo el resto. Esto lo hacemos como en las secciones anteriores, y de manera independiente para cada clase.
+
+2. Para clasificar un nuevo caso $x$, 
+calculamos 
+$$\hat{p}^{(1)}, \hat{p}^{(2)},\ldots, \hat{p}^{(K)}$$
+
+y clasificamos a la clase de máxima probabilidad
+$$\hat{G}(x) = \arg\max_g \hat{p}^{(g)}(x)$$
+Nótese que no hay ninguna garantía de que las probabilidades de clase
+sumen 1, pues se trata de estimaciones independientes de cada clase. En este sentido, produce estimaciones que en realidad no satisfacen las propiedades del modelo de probabilidad establecido - aunque pueden normalizarse. Sin embargo, esta estrategia es simple y en 
+muchos casos funciona bien.
+
+
+### Regresión logística multinomial {-}
+
+Si queremos obtener estimaciones de las probabilidades de clase que sumen uno, entonces tenemos que contruir las estimaciones de cada clase de clase de manera conjunta.
+Como vimos antes, tenemos que estimar, para cada $x$ y $g\in\{1,\ldots, K\}$,
+las probabilidades condicionales de clase:
+$$p_g(x) = P(G = g|X = x).$$
+
+Consideremos primero cómo funciona el modelo de regresión logística (2 clases)
+
+Tenemos que
+$$p_1(x) = h(\beta_0 + \beta_1x_1 + \ldots + \beta_p x_p) =
+\exp(\beta_0 + \beta_1x_1 + \ldots + \beta_p x_p)/Z$$
+y
+$$p_2 (x) = 1/Z$$
+donde $Z = 1 + \exp(\beta_0 + \beta_1x_1 + \ldots + \beta_p x_p)$.
+
+Podemos generalizar para más de 2 clases usando una idea similar. Cada clase
+tiene su juego de coeficientes:
+
+$$p_1(x) =  \exp(\beta_{0,1} + \beta_{1,1}x_1 + \ldots + \beta_{p,1} x_p)/Z$$
+
+$$p_2(x) =  \exp(\beta_{0,2} + \beta_{1,2}x_2 + \ldots + \beta_{p.2} x_p)/Z$$
+hasta
+$$p_{K-1}(x) =  \exp(\beta_{0,{K-1}} + \beta_{1,{K-1}}x_2 + \ldots + \beta_{p,{K-1}} x_p)/Z$$
+y 
+$$p_K(x) = 1/Z$$
+
+En este caso, para que las probabilidades sumen 1, necesitamos que
+$$Z = 1 + \sum_{j=1}^{K-1}\exp(\beta_0^j + \beta_1^jx_1 + \ldots + \beta_p^j x_p)$$
+
+Para ajustar coeficientes, usamos el mismo criterio de devianza de entrenamiento.
+Buscamos minimizar:
+$$D(\beta)=−2 \sum_{i=1}^N \log p_{g^{(i)}}(x^{(i)}),$$
+Donde $\beta$ contiene todos los coeficientes organizados en un vector
+de tamaño $(p+1)(K-1)$:
+$$\beta = ( \beta_0^1, \beta_1^1, \ldots , \beta_p^1,  \beta_0^2, \beta_1^2, \ldots , \beta_p^2, \ldots \beta_0^{K-1}, \beta_1^{K-1}, \ldots , \beta_p^{K-1} )$$
+
+Y ahora podemos usar algún método númerico para minimizar la devianza (por ejemplo,
+descenso en gradiente).  Cuando
+es muy importante tener  probabilidades bien calibradas, el enfoque multinomial
+es más apropiado, pero muchas veces, especialmente si sólo nos interesa clasificar, los
+dos métodos dan resultados similares.
+
+### Interpretación de coeficientes
+
+Los coeficientes mostrados en la parametrización de arriba se intrepretan
+más fácilmente como comparaciones de la clase $g$ contra la clase $K$, pues
+
+$$\log\left (\frac{p_g(x)}{p_K(x)}\right ) = \beta_{0,{g}} + \beta_{1,{g}}x_1 + \ldots + \beta_{p,{g}} x_p$$
+
+Para comparar la clase $j$ con la clase $k$ notamos que
+
+$$\log\left (\frac{p_j(x)}{p_k(x)}\right ) = 
+(\beta_{0,{j}}- \beta_{0,{k}}) + (\beta_{1,{j}}-\beta_{1,{k}} )x_1 + \ldots + (\beta_{p,{j}} -\beta_{p,{k}})  x_p$$
+
+Así que sólo hace falta restar los coeficientes. Nótese adicionalmente
+que en la parametrización, podemos pensar que
+
+$$\beta_{0,K} = \beta_{1,K} = \cdots = \beta_{p,K} = 0$$ 
+
+
+### Ejemplo: Clasificación de dígitos con regresión multinomial
+
+```{r, message = FALSE, warning = FALSE}
+digitos_entrena <- read_csv('../datos/zip-train.csv')
+digitos_prueba <- read_csv('../datos/zip-test.csv')
+names(digitos_entrena)[1] <- 'digito'
+names(digitos_entrena)[2:257] <- paste0('pixel_', 1:256)
+names(digitos_prueba)[1] <- 'digito'
+names(digitos_prueba)[2:257] <- paste0('pixel_', 1:256)
+```
+
+En este ejemplo, usamos la función *multinom* de *nnet*, que usa
+BFGS para hacer la optimización:
+```{r}
+library(nnet)
+mod_mult <- multinom(digito ~ ., data = digitos_entrena, MaxNWt=100000, maxit = 20)
+```
+
+Checamos para diagnóstico la matriz de confusión **de entrenamiento**.
+
+```{r}
+table(predict(mod_mult), digitos_entrena$digito)
+```
+
+
+Ahora validamos con la muestra de prueba y calculamos error de clasificación:
+```{r}
+confusion_prueba <- table(predict(mod_mult, newdata = digitos_prueba), digitos_prueba$digito)
+confusion_prueba
+sum(diag(confusion_prueba))/sum(confusion_prueba)
+round(prop.table(confusion_prueba, 2),2)
+```
+
+El resultado no es muy bueno. Veremos más adelante mejores métodos para 
+este problema. ¿Podemos interpretar el modelo?
+
+Una idea es tomar los coeficientes y graficarlos según la estructura de
+las imágenes:
+
+```{r}
+coefs <- coef(mod_mult)
+coefs_reng <- coefs[1, , drop =FALSE]
+coefs <- rbind(coefs_reng, coefs)
+coefs[1 , ] <- 0
+dim(coefs)
+beta_df <- coefs[,-1] %>% as.data.frame %>% 
+  mutate(digito = 0:(nrow(coefs)-1)) %>%
+  gather(pixel, valor, contains('pixel')) %>%
+  separate(pixel, into = c('str','pixel_no'), sep='_') %>%
+  mutate(x = (as.integer(pixel_no)-1) %% 16, y = -((as.integer(pixel_no)-1) %/% 16))
+head(beta_df)
+```
+
+Podemos cruzar la tabla con sí misma para hacer comparaciones de cómo discrimina
+el modelo entre cada par de dígitos:
+
+```{r}
+tab_coef <- beta_df %>% select(digito, x, y, valor)
+tab_coef_1 <- tab_coef
+names(tab_coef_1) <- c('digito_1','x','y','valor_1')
+tab_cruzada <- full_join(tab_coef_1, tab_coef) %>% mutate(dif = valor_1 - valor)
+tab_cruzada <- tab_cruzada %>% group_by(digito, digito_1) %>% 
+  mutate(dif_s = (dif - mean(dif))/sd(dif)) %>%
+  mutate(dif_p = pmin(pmax(dif_s, -2), 2))
+```
+
+```{r}
+ggplot(tab_cruzada, aes(x=x, y=y)) + geom_tile(aes(fill = dif_p)) + 
+  facet_grid(digito_1~digito) + scale_fill_distiller(palette = "Spectral")
+```
+
+
+
+### Discusión {-}
+
+Nótese que no corrimos el modelo hasta convergencia. Vamos a hacerlo ahora:
+
+
+```{r}
+mod_mult <- multinom(digito ~ ., data = digitos_entrena, MaxNWt=100000, maxit = 500)
+```
+
+
+```{r, cache = TRUE}
+confusion_prueba <- table(predict(mod_mult, newdata = digitos_prueba), digitos_prueba$digito)
+confusion_prueba
+sum(diag(confusion_prueba))/sum(confusion_prueba)
+round(prop.table(confusion_prueba, 2),2)
+```
+
+Y nota que el error de clasificación es más grande que cuando nos detuvimos antes. Discute en clase:
+
+- Grafica los coeficientes para este segundo modelo
+- ¿En cuál de los dos modelos es más fácil interpretar los coeficientes? ¿En cuál
+es menor el error?
+- ¿Cuál crees que es el problema de este segundo modelo comparado con el primero? ¿Por qué crees que sucede? ¿Cómo podríamos corregir este problema?
+
+
