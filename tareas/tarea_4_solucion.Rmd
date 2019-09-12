@@ -1,0 +1,256 @@
+---
+title: 'Tarea 4: regresión logística'
+output:
+  html_document:
+    df_print: paged
+---
+
+En esta tarea construiremos varios modelos de regresión logística
+y compararemos sus resultados.
+
+### Preparación
+
+Puedes usar el siguiente código, o tus implementaciones propias:
+
+```{r}
+source("tarea_4_codigo.R")
+```
+
+Usaremos los datos de sobrevivientes del hundimiento del Titanic,
+obtenidos de [este concurso de Kaggle](https://www.kaggle.com/c/titanic)
+
+```{r}
+library(tidyverse)
+datos_titanic <- read_csv("./tarea_4_datos/train.csv")
+```
+
+En este caso, queremos predecir la variable *Survived* en términos del resto.
+Para simiplificar el ejericicio, 
+
+ - solo usaremos algunas de las variables,
+ - ignoramos datos faltantes en la variable edad
+
+```{r}
+datos_titanic <- datos_titanic %>% 
+    select(Survived, Pclass, Age, Sex, Embarked) %>%
+    filter(!is.na(Age), !is.na(Embarked))
+summary(datos_titanic)
+head(datos_titanic)
+```
+
+La descripción de las variables es:
+
+survival	Survival	0 = No, 1 = Yes
+pclass	Ticket class	1 = 1st, 2 = 2nd, 3 = 3rd
+sex	Sex	
+Age	Age in years	
+embarked	Port of Embarkation	C = Cherbourg, Q = Queenstown, S = Southampton
+
+Convertimos las variables categóricas a numerícas creando indicadoras, como
+sigue:
+
+```{r}
+datos <- datos_titanic %>% 
+         mutate(female = as.numeric(Sex == "female"),
+                southampton = as.numeric(Embarked == "S"),
+                cherbourg = as.numeric(Embarked == "C")) %>%
+        select(-Embarked, -Sex)
+datos
+```
+
+Consierando cómo se ven estos datos, podemos usar una normalización simple
+(puedes también hacerlo como lo hicimos en clase), de forma que todas las variables
+estén aproximadamente en el rango 0 - 1 :
+
+```{r}
+datos$age_n <- datos$Age / 60
+datos$pclass_n <-(datos$Pclass - 1) / 3
+datos_trans <- datos %>% select(Survived, pclass_n, age_n, female, southampton, cherbourg)
+datos_trans
+```
+
+
+Y finalmente, separa en entrenamiento y prueba de esta forma (como estamos
+normalizando con cantidades fijas predefinidas, no tenemos que normalizar por separado):
+
+```{r}
+set.seed(2850)
+datos_trans <- datos_trans %>% 
+    mutate(u = runif(nrow(datos_trans))) 
+entrena <- datos_trans %>% filter(u <= 0.7) %>% select(-u)
+prueba <- datos_trans %>% filter(u > 0.7) %>% select(-u)
+```
+
+Creamos matrices:
+
+```{r}
+nrow(entrena)
+nrow(prueba)
+x_ent <- as.matrix(entrena %>% select(-Survived))
+x_pr <- as.matrix(prueba %>% select(-Survived))
+y_ent <- entrena$Survived
+y_pr <- prueba$Survived
+```
+
+
+### Ejercicio A
+
+1. Ajusta un modelo usando solo una variable (por ejemplo, el indicador si 
+abordó en Cherbourg). Ajusta el tamaño de paso y checa convergencia
+
+```{r}
+x_ent_1 <- x_ent[ , "cherbourg", drop = FALSE] # drop=false es para no convertir en vector
+devianza_ent <- devianza_calc(x_ent_1, y_ent)
+grad_ent <- grad_calc(x_ent_1, y_ent)
+## termina esta línea
+num_iteraciones <- 300
+eta <- 0.7
+z <- descenso(n = num_iteraciones, c(0,0), eta = eta, grad_ent)
+```
+
+2. Calcula ahora la devianza de prueba de este modelo
+
+```{r}
+x_pr_1 <-  x_pr[ , "cherbourg", drop = FALSE]
+devianza_pr <- devianza_calc(x_pr_1, y_pr)
+devianza_pr(z[num_iteraciones,])
+```
+
+3. Para este modelo simple, calcula la probabilidad estimada por el modelo
+de sobrevivir 
+para una persona que embarcó en cherbourg y una que no:
+
+```{r}
+# Rellena:
+# probabilidad sobrevivir si no embarcó en Cherbourg
+betas <- z[num_iteraciones, ]
+h( betas[1] )
+# probabilidad si embarcó  en Cherbourg
+h( betas[1] + betas[2]*1 )
+```
+
+
+### Ejercicio B
+
+Ahora utiliza todas las variables, y repite el ejercicio anterior:
+
+1. Ajusta el tamaño de paso y checa convergencia
+
+```{r}
+devianza_ent <- devianza_calc(x_ent, y_ent)
+grad_ent <- grad_calc(x_ent, y_ent)
+## termina esta línea
+num_iteraciones <- 5000
+eta <- 0.5
+z <- descenso(n = num_iteraciones, rep(0, 6), eta = eta, grad_ent)
+tail(z)
+```
+
+2. Calcula ahora la devianza de prueba de este modelo
+
+```{r}
+devianza_pr <- devianza_calc(x_pr, y_pr)
+betas <- z[num_iteraciones, ]
+devianza_pr(betas)
+```
+
+¿Qué modelo es mejor?
+
+3. Calcula la probabidad estimada de que un hombre con boleto de 3a clase, de 40 años,
+que abordó en southampton sobreviva. Repite para una mujer con boleto de 1a clase, de 60
+años, que abordó en southampton
+
+
+```{r}
+names(betas) <- c("Intercept", colnames(x_ent))
+betas
+```
+
+```{r}
+prob <- h( betas[1] + betas[2]*(3-1)/2 + betas[3]*(40)/60 + betas[4]*0 + betas[5]*1 + betas[6]*0)
+prob
+```
+
+
+4. Grafica las probabilidades estimadas (del modelo) para alguien que subió en Southampton,
+para todos los rangos de edad, hombres y mujeres, de las tres clases posibles. Puedes
+empezar con el siguiente código:
+
+```{r}
+dat_calc <- expand.grid(list ( pclass_n = unique(x_ent[,"pclass_n"]),
+                   age_n = unique(x_ent[, "age_n"]),
+                   female = c(0,1),
+                   southampton = 1,
+                   cherbourg = 0))
+mat_calc <- as.matrix(dat_calc)
+dat_calc$p_surv <- p_beta(mat_calc, betas)
+ggplot(dat_calc, aes(x = 60*age_n, y = p_surv, colour = factor(3 * pclass_n + 1), 
+    group = pclass_n)) +
+    facet_wrap(~female) + geom_line()  + ylim(c(0, 1)) +
+    labs(title = "Probabilidades superviviencia (Pasajeros de Southampton)")
+```
+
+¿Cuáles son las probabilidades más altas? ¿Cuáles son las más bajas?
+
+5. ¿Cuál de los dos modelos anteriores (una sola variable, todas las variables)
+se desempeña mejor? ¿Por qué?
+
+6. Calcula el error de clasificación de prueba 
+
+```{r}
+betas
+prob_pr <- p_beta(x_pr, betas)
+y_pred <- as.numeric(prob_pr > 0.5)
+table(y_pred, y_pr)
+mean(y_pred != y_pr)
+```
+
+### Ejercicio C
+
+Ahora supondremos que tenemos algunas variables adicionales para incluir en el modelo.
+En este ejercicio veremos qué sucede si estas variables **no** pueden ayudarnos
+a predecir (las simulamos al azar)
+
+Dada la escala de nuestras variables, podemos simular variables con valores entre 0 y 1
+
+```{r}
+set.seed(201)
+p_ruido <- 50 # agregamos 50 variables sin información
+n_ent <- nrow(x_ent)
+n_pr <- nrow(x_pr)
+mat_ent <- matrix(runif(n_ent * p_ruido), n_ent, p_ruido)
+mat_pr <- matrix(runif(n_pr * p_ruido), n_pr, p_ruido)
+head(mat_ent)
+```
+
+1. Ajusta un modelo usando todas las variables, incluyendo
+las generadas aleatoriamente:
+
+```{r}
+devianza_ent <- devianza_calc(cbind(x_ent, mat_ent), y_ent)
+grad_ent <- grad_calc(cbind(x_ent, mat_ent), y_ent)
+## termina esta línea
+z <- descenso(n = 5000, rep(0, 6 + p_ruido), eta = 0.5, grad_ent)
+```
+
+2. Calcula ahora la devianza de prueba de este modelo
+
+```{r}
+devianza_pr <- devianza_calc(cbind(x_pr, mat_pr), y_pr)
+devianza_pr(z[5000,])
+```
+
+Prueba utilizando otras semillas. Contesta:
+
+- ¿Cómo es la devianza de prueba
+de el modelo con las variables ruidosas en comparación al modelo con
+las seis variables originales?
+- ¿Cómo es la devianza de entrenamiento
+del modelo con las variables ruidosas en comparación al modelo con
+las seis variables originales?
+- ¿Cómo se compara la devianza de *entrenamiento* del modelo con 6 variables
+con el modelo con todas las variables ruidosas?
+
+
+3. Haz pruebas agregando 2 o 3 variables ruidosas. ¿Qué tan grande es la diferencia
+entre la evaluación de los modelos?
