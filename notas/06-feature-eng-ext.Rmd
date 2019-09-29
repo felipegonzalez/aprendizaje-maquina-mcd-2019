@@ -1,0 +1,481 @@
+# Extensión del modelo lineal y Feature Engineering
+
+
+Los modelos lineales (para regresión y clasificación) son modelos en principio simples que tienen la ventaja de que es 
+relativamente fácil entender cómo contribuyen las variables de entrada 
+a la predicción
+(simplemente describimos los coeficientes), es relativamente fácil ajustarlos, y es fácil hacer cálculos con ellos.
+
+Sin embargo, puede ser que sean pobres desde el punto de vista predictivo. Hay dos razones:
+
+1. Los coeficientes tienen **varianza** alta, 
+de modo que las predicciones resultantes son inestables 
+(por ejemplo, por pocos datos o variables de entradas correlacionadas). 
+En este caso, vimos que con el enfoque de regularización ridge o lasso podemos
+mejorar la estabilidad, 
+las predicciones, y obtener modelos más parsimoniosos.
+
+2. El modelo tiene **sesgo** alto, en el sentido de que la estructura lineal
+es deficiente para describir patrones claros e importantes en los datos. Este 
+problema puede suceder 
+cuando tenemos relaciones complejas entre las variables. Cuando hay relativamente 
+pocas entradas y 
+suficientes datos, puede ser posible ajustar estructuras más realistas y complejas. 
+Aunque veremos otros métodos para atacar este problema más adelante, a veces
+extensiones 
+simples del modelo lineal pueden resolver este problema, que discutiremos en esta
+sección. Igualmente,
+esperamos encontrar 
+mejores predicciones con modelos más realistas.
+
+## Feature engineering
+
+El proceso de [feature engineering](http://www.feat.engineering/index.html) es un proceso de creación, refinación y selección
+de entradas de los modelos. Este proceso es importante para obtener buenos resultados
+desde el punto de vista de desempeño predictivo. 
+
+
+Por ejemplo:
+
+- ¿Cuándo conviene transformar variables para incluir en el modelo? Por ejemplo, transformaciones no lineales, categorización y técnicas asociadas.
+- ¿Cuándo conviene producir nuevas variables con otras dadas como entradas al modelo? Por ejemplo, creación de interacciones o variables condicionales
+- ¿Cómo resumir variables a distintas jerarquías? Por ejemplo, si la unidad de predicción es hogar, ¿cómo resumimos o incluimos los datos de nivel persona en el modelo?
+- ¿Cómo tratar con valores atípicos o valores faltantes? Por ejemplo, creación de indicadores para datos faltantes, cuándo hacer imputación.
+
+En todos estos casos, el primer punto importante es que debemos considerar este proceso
+de ingeniería como parte del ajuste, para evitar **sobreajuste**:
+
+- Las reglas de creación de variables deben estar definidas a nivel del conjunto de **entrenamiento**.
+- El análisis exploratorio para descubrir transformaciones relevantes debe hacerse con
+el conjunto de entrenamiento también.
+- Podemos usar validación cruzada o una muestra de validación para probar nuestro trabajo de 
+*feature engineering*, y evitar sobreajuste.
+
+## Cómo hacer más flexible el modelo lineal
+
+Veremos algunas técnicas de feature engineering para el modelo lineal:
+
+```{block2, type ='comentario'}
+ Podemos construir modelos lineales más flexibles expandiendo el espacio de entradas con transformaciones y combinaciones de las variables originales de entrada.
+```
+
+La idea básica es entonces transformar a nuevas entradas, 
+antes de ajustar un modelo:
+$$(x_1,...,x_p) \to (b_1(x),...,b_M (x)).$$
+
+donde típicamente $M$ es mayor que $p$. Entonces, en lugar de ajustar
+el modelo lineal en las $x_1,\ldots, x_p$, que es
+
+$$ f(x) = \beta_0 + \sum_{i=1}^p \beta_jx_j$$
+
+ajustamos un *modelo lineal en las entradas transformadas*:
+
+$$ f(x) = \beta_0 +  \sum_{i=1}^M \beta_jb_j(x).$$
+
+
+Como cada $b_j$ es una función que toma valores numéricos, podemos
+considerarla como una *entrada derivada* de las entradas originales.
+
+#### Ejemplo {-}
+Si $x_1$ es compras totales de un cliente de tarjeta
+de crédito, y $x_2$ es el número de compras, podemos crear
+una entrada derivada $b_1(x_1,x_2)=x_1/x_2$ que representa el tamaño promedio
+por compra. Podríamos entonces poner $b_2(x_1,x_2)=x_1$, $b_3(x_1,x_2)=x_2$,
+y ajustar un modelo lineal usando las entradas derivadas $b_1,b_2, b_3$.
+
+Lo conveniente de este enfoque es que lo único que hacemos para
+hacer más flexible el modelo es transformar en primer lugar las variables
+de entrada (quizá produciendo más entradas que el número de variables originales).
+Después construimos un modelo lineal, y todo lo que hemos visto aplica
+sin cambios: el modelo sigue siendo lineal, pero el espacio de entradas
+es diferente (generalmente expandido).
+
+Veremos las siguientes técnicas:
+
+- Agregar versiones transformadas de las variables de entrada.
+- Incluir variables cualitativas (categóricas). 
+- Interacciones entre variables: incluir términos de la forma $x_1x_2$.
+- Regresión polinomial: incluír términos de la forma $x_1^2$, $x_1^3$, etcétera.
+- Splines de regresión.
+
+## Transformación de entradas
+
+Una técnica útil para mejorar el sesgo de modelos de regresión 
+consiste en incluir o sustituir valores transformados de las
+variables numéricas de entrada. 
+
+#### Ejemplo: agregar entradas transformadas {-}
+
+
+Empezamos por predecir el valor de una casa en función de calidad de terminados.
+
+Preparamos los datos:
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+theme_set(theme_minimal())
+datos_casas <- read_csv("../datos/houseprices/house-prices.csv", na="")
+set.seed(912)
+indices_entrena <- sample(1:nrow(datos_casas), 1000)
+casas_e <- datos_casas[indices_entrena, ] %>% mutate(log_price = log(SalePrice)) %>% 
+    filter(GrLivArea < 2500)
+casas_p <- datos_casas[-indices_entrena, ] %>% mutate(log_price = log(SalePrice)) %>% 
+    filter(GrLivArea < 2500)
+```
+
+
+Usaremos una muestra de validacion para ir checando nuestro trabajo.
+
+Ajustamos el modelo y lo probamos
+
+
+```{r, fig.width=5, fig.asp=0.7}
+mod_1 <- lm(SalePrice ~ OverallQual , data = casas_e)
+calc_error <- function(mod,  datos_p, y_name = "SalePrice"){
+    preds <- predict(mod, newdata = datos_p)
+    dat <- tibble(pred = preds, observado = datos_p[[y_name]])
+    error <- mean(abs(preds - datos_p[[y_name]])) / 1000
+    grafica <- ggplot(dat, aes(x = preds, y = observado)) +
+        geom_point(alpha = 0.5) + geom_abline(colour = "red") +
+        geom_smooth(method="loess", span = 3, method.args=list(family= "symmetric")) +
+      labs(caption =  paste("Error absoluto medio (miles):", round(error, 1)))
+    print(grafica)
+}
+calc_error_vc <- function(mod, datos_e, vueltas = 5, y_name = "SalePrice"){
+    datos_e$id <- 1:nrow(datos_e)
+    datos_e$indice <- sample(1:10, nrow(datos_e), replace = TRUE)
+    refit_pred <- function(mod, data, data_predict){
+      preds <- predict(update(mod, data = data), newdata = data_predict)
+      tibble(obs = data_predict[[y_name]], pred_vc = preds)
+    }
+    preds_vc <- map(1:vueltas, ~ refit_pred(mod, 
+                           datos_e %>% filter(indice != .x),
+                           datos_e %>% filter(indice == .x))) %>% 
+      bind_rows()
+    error_tbl <- preds_vc %>% mutate(error = abs(obs - pred_vc) / 1000) %>% 
+      summarise(error_cv = mean(error), ee_cv = sd(error)/sqrt(vueltas)) 
+    error <- error_tbl %>% pull(error_cv)
+    error_sd <- error_tbl %>% pull(ee_cv)
+    grafica <- ggplot(preds_vc, aes(x = pred_vc, y = obs)) +
+        geom_point(alpha = 0.5) + geom_abline(colour = "red") +
+        geom_smooth(method="loess", span = 3, method.args=list(family= "symmetric")) +
+      labs(caption =  paste("Error absoluto medio, vc (miles):", 
+                            round(error, 1), "(", round(error_sd,1) ,")"))
+    print(grafica)
+}
+#calc_error(mod_1, casas_p, "SalePrice")
+calc_error_vc(mod_1, casas_e)
+```
+
+
+Y notamos que nuestras predicciones parecen estar sesgadas: tienden a ser  bajas
+cuando el valor de la casa es alto o bajo. Esto es signo de **sesgo**, y
+ usualmente implica que existen relaciones
+no lineales en las variables que estamos considerando, o interacciones que no 
+estamos incluyendo en nuestro modelo.
+
+Una técnica es agregar entradas derivadas de las que tenemos, usando transformaciones
+no lineales. Por ejemplo, podríamos hacer:
+
+```{r, fig.width=5, fig.asp=0.7}
+mod_2 <- lm(SalePrice ~ OverallQual + I(OverallQual^2) , data = casas_e)
+calc_error_vc(mod_2, casas_e)
+```
+
+Y redujimos el error de validación. Esta reducción claramente proviene de una reducción
+de sesgo, pues usamos un modelo más complejo (una variable adicional).
+
+
+Ahora agregamos otras variables importantes, que por
+*conocimiento del dominio* deberían estar incluídas de manera
+mínima: el tamaño del área habitable, garage y sótano, condición general, 
+y quizá también la relación entre tamaño de piso 1 vs piso 2 (nótese
+que ponemos en el denominador el área del segundo piso):
+
+```{r, fig.width=5, fig.asp=0.7}
+mod_3 <- lm(SalePrice ~  OverallQual + I(OverallQual^2) + OverallCond  + 
+                GrLivArea  + TotalBsmtSF + GarageArea + I(`2ndFlrSF`/ `1stFlrSF`), 
+            data = casas_e)
+#calc_error(mod_3, casas_p, "SalePrice")
+calc_error_vc(mod_3, casas_e)
+```
+
+
+## Variables cualitativas
+
+Muchas veces queremos usar variables cualitativas como entradas de nuestro modelo.
+Pero en la expresión
+
+$$ f(x) = \beta_0 +  \sum_{i=1}^p \beta_jx_j,$$
+todas las entradas son numéricas. Podemos usar un truco simple para incluir
+variables cualitativas.
+
+#### Ejemplo {-}
+Supongamos que queremos incluir la variable *CentralAir*, si tiene aire acondicionado
+central o no. Podemos ver en este análisis simple que, por ejemplo, controlando
+por tamaño de la casa, agrega valor tener aire acondicionado central:
+
+```{r}
+casas_e %>% group_by(CentralAir) %>% count
+ggplot(casas_e, 
+       aes(x=GrLivArea, y=SalePrice, colour=CentralAir, group=CentralAir)) + 
+  geom_jitter(alpha=1) + 
+  geom_smooth(method='lm', se=FALSE, size=1.5) 
+```
+
+Podemos incluir de manera simple esta variable creando una variable *dummy* o
+*indicadora*,
+que toma el 1 cuando la casa tiene AC y 0 si no. Nótese también que las pendientes
+parecen diferentes. Esto lo discutiremos más adelante.
+
+
+```{r}
+casas_e <- casas_e %>% mutate(AC_present = as.numeric(CentralAir == "Y"))
+casas_e %>% select(Id, CentralAir, AC_present)
+```
+
+Y ahora podemos hacer:
+
+```{r, fig.width=5, fig.asp=0.7}
+mod_5 <- lm(SalePrice ~  OverallQual + I(OverallQual^2) + GrLivArea + TotalBsmtSF +
+                GarageArea + OverallCond + I(`2ndFlrSF`/ `1stFlrSF`) +  CentralAir, 
+            data = casas_e)
+#calc_error(mod_5, casas_e, "SalePrice")
+calc_error_vc(mod_5, casas_e)
+```
+
+Que no es una gran mejora, pero esperado dado que pocas de estas casas tienen aire acondicionado.
+
+Cuando la variable categórica tiene $K$ clases,
+solo creamos variables indicadores de las primeras $K-1$ clases, pues
+la dummy de la última clase tiene información redundante: es decir, si
+para las primeras $K-1$ clases las variables dummy son cero, entonces
+ya sabemos que se trata de la última clase $K$, y no necesitamos incluir
+una indicadora para la última clase.
+
+
+#### Ejemplo {-}
+
+Vamos a incluir la variable *BsmtQual*, que tiene los niveles:
+
+```{r}
+casas_e %>% group_by(BsmtQual) %>% count
+```
+
+**Nótese que codificamos como NA**, que vemos como una categoría más (le puedes poner
+"no disponible", por ejemplo), cuando este dato no está disponible. En este caso, la razón de
+que no está disponible es que está asociada con casas que no tienen sótano.
+
+Podemos hacer una gráfica exploratoria como la anterior:
+
+```{r}
+ggplot(casas_e, 
+       aes(x=GrLivArea, y=SalePrice, colour=BsmtQual, group=BsmtQual)) + 
+  geom_jitter(alpha=1) + 
+  geom_smooth(method='lm', se=FALSE, size=1.5) 
+```
+
+donde vemos que esta variable puede aportar a la predicción. Ajustamos y evaluamos:
+
+```{r}
+# recodificar NA como nivel base:
+casas_e <- casas_e %>% mutate(sotano_cal = fct_relevel(BsmtQual, "NA"))
+casas_p <- casas_p %>% mutate(sotano_cal = fct_relevel(BsmtQual, "NA"))
+mod_6 <- lm(SalePrice ~  OverallQual + I(OverallQual^2) + GrLivArea + TotalBsmtSF +
+                GarageArea + OverallCond + I(`2ndFlrSF`/ `1stFlrSF`) +  
+                CentralAir + sotano_cal, 
+            data = casas_e)
+#calc_error(mod_6, casas_p, "SalePrice")
+calc_error_vc(mod_6, casas_e)
+```
+
+Si examinamos los coeficientes, vemos que *lm* automáticamente convirtió esta variable
+con *dummy coding*:
+
+```{r}
+coef(mod_6) %>% round
+bsmt_ind  <- str_detect(names(coef(mod_6)), "sotano_cal")
+coef(mod_6)[bsmt_ind] %>% sort %>% round
+```
+
+Nótese que los coeficientes de esta variable no se pueden interpretar sin considerar 
+*TotalBsmntSF*, que vale cero cuando la casa no tienen sótano.
+
+---
+
+**Observaciones**:
+- Nótese también que no hay coeficiente para una de las clases, por lo que discutimos arriba. También podemos pensar que el coeficiente de esta clase es 0, y así comparamos con las otras clases.
+- Cuando tenemos variables dummy, el intercept se interpreta con el nivel esperado cuando las variables cuantitativas valen cero, y la variable categórica toma la clase que se excluyó en la construcción de las indicadoras.
+
+```{block2, type='comentario'}
+Podemos incluir variables cualitativas usando este truco de codificación
+dummy (también llamado a veces *one-hot encoding*). Ojo: variables con muchas 
+categorías pueden inducir varianza alta en el modelo
+(dependiendo del tamaño de los datos). En estos
+casos conviene usar regularización y quizá (si es razonable) usar categorizaciones
+más gruesas.
+```
+
+En nuestro ejemplo anterior, observamos que el nivel *Fair* queda por debajo de *Typical* y *NA*. Esto
+podría se un signo de sobreajuste (estimación con alta varianza de estos coeficientes).
+
+
+## Interacciones
+
+En el modelo lineal, cada variable contribuye de la misma manera independientemente de los valores de las otras variables. Esta es un simplificación o aproximación útil, 
+pero muchas veces puede producir sesgo demasiado grande en el modelo. 
+Por ejemplo: consideremos los siguientes datos de la relación de mediciones de temperatura y ozono en la atmósfera:
+
+
+#### Ejemplo {-}
+```{r}
+head(airquality)
+air <- filter(airquality, !is.na(Ozone) & !is.na(Wind) & !is.na(Temp))
+lm(Ozone ~Temp, data = air[1:80,])
+```
+```{r}
+set.seed(9132)
+air <- sample_n(air, 116)
+ggplot(air[1:50,], aes(x = Temp, y = Ozone)) + geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE)
+```
+
+Y notamos un sesgo posible en nuestro modelo. Si coloreamos por velocidad del viento:
+
+```{r}
+cuantiles <- quantile(air$Wind)
+ggplot(air[1:50,], aes(x = Temp, y = Ozone, colour= cut(Wind, cuantiles))) + 
+  geom_point() + geom_smooth(method = 'lm', se = FALSE)
+```
+
+Nótese que parece ser que cuando los niveles de viento son altos, entonces
+hay una relación más fuerte entre temperatura y Ozono. Esto es una *interacción*
+de temperatura y viento.
+
+Podemos hacer los siguiente: incluír un factor adicional, el producto
+de temperatura con viento:
+
+```{r}
+air$temp_wind <- air$Temp*air$Wind
+mod_a0 <- lm(Ozone ~ Temp, data = air[1:50,])
+mod_a1 <- lm(Ozone ~ Temp + Wind, data = air[1:50,])
+mod_a2 <- lm(Ozone ~ Temp + Wind + temp_wind, air[1:50,])
+mod_a2
+pred_0 <- predict(mod_a0, newdata = air[51:116,])
+pred_1 <- predict(mod_a1, newdata = air[51:116,])
+pred_2 <- predict(mod_a2, newdata = air[51:116,])
+mean(abs(pred_0-air[51:116,'Ozone']))
+mean(abs(pred_1-air[51:116,'Ozone']))
+mean(abs(pred_2-air[51:116,'Ozone']))
+```
+
+Podemos interpretar el modelo con interacción de la siguiente forma:
+
+- Si $Wind = 5$, entonces la relación Temperatura <-> Ozono es:
+$$ Ozono = -290 + 4.5Temp + 14.6(5) - 0.2(Temp)(5) = -217 + 3.5Temp$$
+- Si $Wind=10$, 
+ entonces la relación Temperatura <-> Ozono es:
+$$ Ozono = -290 + 4.5Temp + 14.6(15) - 0.2(Temp)(15) = -71 + 1.5Temp$$
+
+Incluir interacciones en modelos lineales es buena idea para problemas con un número relativamente chico de variables (por ejemplo, $p < 10$).
+En estos casos, conviene comenzar agregando interacciones entre variables que tengan efectos relativamente grandes en la predicción.
+No es tan buena estrategia para un número grande de variables: por ejemplo, para clasificación de dígitos, hay 256 entradas. Poner todas las interacciones añadiría más de
+30 mil variables adicionales, y es difícil escoger algunas para incluir en el modelo
+a priori.
+
+Pueden escribirse interacciones en fórmulas de *lm* y los cálculos se
+hacen automáticamente:
+```{r}
+mod_a3 <- lm(Ozone ~ Temp + Wind + Temp:Wind, air[1:50,])
+mod_a3
+```
+
+
+---
+
+
+```{block2, type='comentario'}
+Podemos incluir interacciones para pares de variables que son importantes en la
+predicción, o que por conocimiento del dominio sabemos que son factibles. Conviene
+usar regularización si necesitamos incluir varias interacciones.
+```
+
+
+#### Ejemplo {-}
+En nuestro ejemplo de precios de casas ya habíamos intentado utilizar una interacción,
+considerando el cociente de dos variables. Aquí veremos otras que por *conocimiento experto*
+y por análisis que hicimos arriba, deberíamos de considerar también. Por las que vimos arriba:
+
+- Interacción de calidad de Sótano con Tamaño de Sótano, y otras similares
+- Interacción de Aire acondicionado con tamaño
+- Interacción de calidad general con tamaño, por ejemplo:
+
+Observamos que en nuestro modelo la calidad y condición sólo puede aumentar
+una cantidad fija al precio de venta. En realidad, dependiendo de la calidad y condición,
+deberíamos obtener distintos *precios por metro cuadrado*. Por ejemplo, si graficamos
+
+```{r}
+casas_e <- casas_e %>% mutate(grupo_calidad = cut(OverallQual, c(0, 4, 6, 8, 10)))
+ggplot(casas_e, aes(x = GrLivArea, y = SalePrice, colour = grupo_calidad, 
+                    group = grupo_calidad)) + 
+  geom_point(alpha = 0.3) + 
+  geom_smooth(method = "loess", se = FALSE, span = 2, method.args = list(degree = 1, family="symmetric")) +
+  scale_colour_manual(values = cbbPalette)
+```
+
+vemos que las pendientes son distintas. Esto sugiere agregar la interacción
+de Calidad con Área. Probemos nuestro en nuestro modelo:
+
+
+
+
+```{r, message = FALSE, warning = FALSE}
+mod_7 <- lm(SalePrice ~  OverallQual + I(OverallQual^2) + GrLivArea + 
+                GarageArea + OverallCond + I(`2ndFlrSF`/ `1stFlrSF`) +  
+                CentralAir +  TotalBsmtSF + sotano_cal + TotalBsmtSF:sotano_cal +
+                GrLivArea:OverallQual + CentralAir:OverallQual, 
+            data = casas_e)
+#calc_error(mod_6, casas_p, "SalePrice")
+calc_error_vc(mod_7, casas_e)
+```
+
+
+
+Podemos considerar otra adicional: la relación entre precio y superficie debe tener 
+interacción con el vecindario,
+pues distintos vecindarios tienen distintos precios por metro cuadrado:
+
+```{r}
+agrupamiento <- casas_e %>% group_by(Neighborhood) %>%
+    summarise(media_ft2 = mean(SalePrice / GrLivArea), n = n()) %>%
+    arrange(desc(media_ft2)) %>%
+    mutate(Neighborhood_grp = ifelse(n < 40, 'Other', Neighborhood))
+agrupamiento
+casas_e <- casas_e %>% left_join(agrupamiento) 
+## Nota: zonas desconocidas las podemos evitar, o agregar a "Other":
+casas_p <- casas_p %>% left_join(agrupamiento) %>% 
+  mutate(ifelse(is.na(Neighborhood_grp), "Other", Neighborhood_grp))
+```
+
+
+```{r, message = FALSE, warning = FALSE}
+mod_8 <- lm(SalePrice ~  OverallQual + I(OverallQual^2) + GrLivArea + 
+                GarageArea + OverallCond + I(`2ndFlrSF`/ `1stFlrSF`) +  
+                CentralAir +  TotalBsmtSF + sotano_cal + TotalBsmtSF:sotano_cal +
+                GrLivArea:OverallQual + CentralAir:OverallQual + Neighborhood_grp +
+                Neighborhood_grp:GrLivArea, 
+            data = casas_e)
+calc_error_vc(mod_8, casas_e)
+```
+
+En este caso no mejoramos mucho: es posible que estas variables tengan información complementaria
+a la que ya habíamos incluído (por ejemplo, las zonas caras tienen casas más grandes y de más calidad, etc.).
+
+Veamos los errores con muestra de validación de algunos de nuestros modelos:
+
+```{r, message = FALSE, warning = FALSE}
+calc_error(mod_3, casas_p, "SalePrice")
+calc_error(mod_8, casas_p, "SalePrice")
+```
+
