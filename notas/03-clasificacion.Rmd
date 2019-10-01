@@ -152,7 +152,7 @@ simular_impago <- function(n = 500){
     x <- pmin(rexp(n, 100 / 40), 1)
     # las probabilidades de estar al corriente:
     probs <- p_1(x)
-    # finalmente, simulamos cuáles clientes siguen en al corriente y cuales no:
+    # finalmente, simulamos cuáles clientes siguen al corriente y cuales no:
     g <- ifelse(rbinom(length(x), 1, probs) == 1 , 1, 0)
     dat_ent <- tibble(x = x, p_1 = probs, g = g)
     dat_ent
