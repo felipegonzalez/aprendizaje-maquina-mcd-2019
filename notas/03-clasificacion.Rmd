@@ -812,11 +812,11 @@ options(digits = 2)
 coeficientes[1]
 h(coeficientes[1])
 ```
-Esto quiere decir que la probabilidad de estar al corriente es de 87\% cuando
+Esto quiere decir que la probabilidad de estar al corriente es de 85\% cuando
 la variable $x$ está en su media.
 Si $x$ se incrementa en una desviación estándar, la cantidad
 $$z = \beta_0 + \beta_1x$$
- la probabilidad de estar al corriente cambia a 67\%:
+ la probabilidad de estar al corriente cambia a 66\%:
 ```{r}
 h(coeficientes[1]+ coeficientes[2]*1)
 ```
