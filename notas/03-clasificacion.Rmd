@@ -796,6 +796,7 @@ de causalidad).
 Igual que en regresión lineal, podemos explicar el comportamiento de las
 probabilidades de clase ajustadas, pero es un poco más difícil por la 
 no linealidad introducida por la función logística.
+
 #### Ejemplo {-}
 Consideremos el modelo ajustado:
 ```{r}
