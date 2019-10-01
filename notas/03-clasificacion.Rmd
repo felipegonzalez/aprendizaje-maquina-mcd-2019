@@ -824,7 +824,7 @@ Nótese que una desviación estándar de $x$ equivale a
 ```{r}
 sd(dat_ent$x)
 ```
-Así que en las unidades originales, un incremento de 20 en la variable $x$
+Así que en las unidades originales, un incremento de 29 en la variable $x$
 implica un cambio de 
 ```{r}
 h(coeficientes[1] + coeficientes[2]) - h(coeficientes[1])
