@@ -496,7 +496,7 @@ con clasificadores y error de clasificación:
 
 - Tenemos una medida de qué tan seguros estamos en la clasificación (por ejemplo,
 $p_1 = 0.55$ en vez de $p_1 = 0.995$). 
-- La salida de probabilides es un insumo más útil para tareas posteriores (por ejemplo,
+- La salida de probabilidades es un insumo más útil para tareas posteriores (por ejemplo,
 si quisiéramos ofrecer las 3 clases más probables en clasificación de imágenes).
 - Muchas veces minimizar el error de clasificación no es de interés para el problema,
 sino identificar casos con probabilidades altas de una clase u otra.
