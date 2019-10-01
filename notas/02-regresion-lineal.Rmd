@@ -279,7 +279,7 @@ arreglar este problema?.
 ---
 
 
-## Aprendizaje de parámeteros para regresión lineal
+## Aprendizaje de parámetros para regresión lineal
 
 Ahora veremos cómo resolver el problema de minimización para ajustar el modelo
 de regresión lineal con error cuadrático. Hay varias maneras de hacer esto:
