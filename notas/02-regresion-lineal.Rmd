@@ -826,7 +826,7 @@ x_ent_s <- scale(x_ent)
 ajustar_casas <- function(modelo, x, y, n_epochs = 100){
   ajuste <- modelo %>% fit(
     as.matrix(x), y,
-    batch_size = nrow(x_ent), # para descenso en gradient
+    batch_size = nrow(x_ent), # para descenso en gradiente
     epochs = n_epochs, # número de iteraciones
     verbose = 0) %>% as_tibble()
   ajuste
