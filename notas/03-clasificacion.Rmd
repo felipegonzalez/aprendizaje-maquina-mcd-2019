@@ -931,7 +931,7 @@ modelo_diabetes <- keras_model_sequential() %>%
             activation = "sigmoid",    # combinar variables linealmente y aplicar función logística
             kernel_initializer = initializer_constant(0), #inicializamos coeficientes en 0
             bias_initializer = initializer_constant(0))   #inicializamos ordenada en 0
-    # compilar seleccionanfo cantidad a minimizar, optimizador y métricas
+    # compilar seleccionando cantidad a minimizar, optimizador y métricas
 modelo_diabetes %>% compile(
         loss = "binary_crossentropy",  # devianza es entropía cruzada
         optimizer = optimizer_sgd(lr = 0.75), # descenso en gradiente
