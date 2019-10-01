@@ -1006,7 +1006,7 @@ que coincide con el número que obtuvimos en keras.
 
 ## Calibración de probabilidades
 
-Adiconalmente a buscar devianzas bajas, cuando usaremos las 
+Adicionalmente a buscar devianzas bajas, cuando usamos las 
 probabilidades obtenidas para más análisis o algún proceso,
 es necesario checar el ajuste. Podemos hacer esto haciendo pruebas de la *calibración*
 de las probabilidades que arroja el modelo.
