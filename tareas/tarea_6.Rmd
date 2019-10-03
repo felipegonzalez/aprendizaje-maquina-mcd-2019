@@ -1,0 +1,174 @@
+---
+title: "Tarea 6: regularización y validación cruzada"
+output: html_notebook
+---
+
+En este ejemplo hacemos *análisis de sentimiento*, intentanto
+predecir si reseñas de películas son positivas o negativas
+a partir del texto de las reseñas. En este ejemplo
+veremos un enfoque relativamente simple, que consiste en
+considerar solamente las palabras que contienen, sin tomar en
+cuenta el orden (el modelo de bolsa de palabras o *bag of words*).
+
+Usaremos regresión logística regularizada.
+
+## Feature engineering básico 
+
+Hay muchas maneras de preprocesar los datos para obtener
+variables numéricas a partir del texto. En este caso simplemente
+tomamos las palabras que ocurren más frecuentemente. 
+
+- Encontramos las 3000 palabras más frecuentes sobre todos los textos, por ejemplo. Estas palabras son nuestro **vocabulario**.
+- Registramos en qué documentos ocurre cada una de esas palabras.
+- Cada palabra es una columna de nuestros datos, el valor es 1 si la palabra
+ocurre en documento y 0 si no ocurre.
+
+
+Por ejemplo, para el texto "Un gato blanco, un gato negro", "un perro juega", "un astronauta juega" quedarían los datos:
+
+|texto_id | un | gato | negro | blanco | perro | juega |
+-----|------|-------|--------|-------|-------  | ---- |
+| texto_1 | 1  |  1   |   1   |   1    |  0    | 0     |
+| texto_2 | 1  |  0   |  0    | 0      |  1    |  0
+| texto_3 | 1  |  0   |  0    | 0      |  0    |  1   |
+
+Nótese que la palabra *astronauta* no está en nuestro vocabulario para este ejemplo.
+
+
+Hay varias opciones para tener mejores variables, que pueden o no ayudar en este
+problema (no las exploramos en este ejercicio):
+
+- Usar conteos de palabras en cada documento, o usar log(1+ conteo), en lugar
+de 0-1's
+- Usar palabras frecuentes, pero quitar las que son *stopwords*,
+como son preposiciones y artículos entre otras, pues no tienen significado: en inglés, por ejemplo, *I, he, she, it, then, the, a*, etc.
+- Lematizar palabras: por ejemplo, contar en la misma categoría *movie* y *movies*, o
+*funny* y **funniest**, etc.
+- Usar indicadores binarios si la palabra ocurre o no en lugar de la frecuencia
+- Usar frecuencias ponderadas por qué tan rara es una palabra sobre todos los documentos (frecuencia inversa sobre documentos)
+- Usar pares de palabras en lugar de palabras sueltas: por ejemplo: juntar "not" con la palabra que sigue (en lugar de usar *not* y *bad* por separado, juntar en una palabra *not_bad*),
+- Usar técnicas de reducción de dimensionalidad que considera la co-ocurrencia de palabras (veremos más adelante en el curso).
+- Muchas otras
+
+### Datos y preprocesamiento
+
+Los textos originales los puedes encontrarlos en la carpeta *datos/sentiment*. 
+Los datos procesados están en *datos/sentiment/matriz_tarea_6.csv*
+
+```{r, message = FALSE, warning = FALSE}
+library(tidyverse)
+mat_docs <- read_csv("../datos/sentiment/matriz_tarea_6.csv")
+polaridad <- read_csv("../datos/sentiment/polaridad_tarea_6.csv")
+dim(mat_docs)
+dim(polaridad)
+```
+
+De modo que tenemos 1615 documentos y 3
+000 términos o palabras. Por ejemplo,
+si seleccionamos unas cuantas palabras y 10 textos:
+
+```{r}
+set.seed(341)
+mat_docs[sample(1:nrow(mat_docs), 15), c("funny", "bad", "the", "bored")]
+```
+
+En los datos de polaridad, 1 es reseña positiva y 0 es reseña negativa:
+
+```{r}
+table(polaridad$polaridad_y)
+```
+
+
+### Regresión logística
+
+Ahora hacemos regresión logística con regularización ridge. 
+
+
+```{r, message = FALSE, warning = FALSE}
+library(glmnet) #o cualquier librería que haga ridge
+library(Matrix)
+# convertimos a matriz rala, más rápido
+x_mat <- Matrix(as.matrix(mat_docs), sparse = TRUE)
+y <- polaridad$polaridad_y
+```
+
+Separamos una muestra de prueba para evaluar:
+
+```{r}
+set.seed(834)
+indices_ent <- sample(nrow(x_mat), 1000)
+x_ent <- x_mat[indices_ent, ]
+y_ent <- y[indices_ent]
+x_pr <- x_mat[-indices_ent, ]
+y_pr <- y[-indices_ent]
+```
+
+
+Selecciona un parámetro de regularización adecuado con validación cruzada-10
+
+```{r}
+cv_mod <- cv.glmnet(x_ent, y_ent, nfolds = 10, 
+                    family = "binomial",
+                    alpha = 0,
+                    lambda = exp(seq(-12, 2, 0.5)))
+plot(cv_mod)
+```
+
+*Preguntas: *
+1. Calcula la devianza de prueba y curva de precisión recall (de prueba) 
+para un modelo
+poco regularizado (por ejemplo, $\log(\lambda) = -12$). Interpreta 
+la curva precision-recall.
+
+```{r}
+library(ROCR)
+# preds_reg_baja <- predict(cv_mod, # rellena parámetros )
+# tu código aquí:                          
+```
+
+2. Calcula la devianza de prueba y curva de precisión recall para un modelo
+con regularización apropiada
+
+```{r}
+# preds_reg <- predict(cv_mod ## rellena parámetros)
+# tu código aquí:
+```
+
+3. Grafica juntas las curvas de precisión recall. ¿Algún modelo domina a otro?
+
+```{r}
+plot(perf_1)
+plot(perf_2, col = "red", add = T)
+```
+
+
+4. Obtén los coeficientes de los dos modelos que comparaste arriba. Compara los
+coeficientes más negativos y más positivos de cada modelo. ¿Cuáles tienen
+valores más grandes en valor absoluto? ¿Por qué? 
+
+```{r}
+#por ejemplo:
+coeficientes_reg_baja <- coef(cv_mod, s = exp(-12)) 
+coeficientes_reg <- coef(cv_mod, s = exp(-3)) 
+coef_tbl <- tibble(palabra = rownames(coeficientes_reg),
+                   reg_baja = coeficientes_reg_baja[,1],
+                   reg      = coeficientes_reg[,1] )
+## aquí tu código:
+```
+
+
+
+5. Calcula qué porcentaje de las predicciones tienen probabilidad menor
+a 0.01 en el segundo modelo. Entre esas predicciones, ¿cuál es la probabilidad
+de que una reseña sea de hecho positiva (según la muestra de prueba)? 
+Describe por qué esto explica en parte que la
+devianza sea tan grande para el modelo 
+no regularizado comparado con el regularizado.
+
+```{r}
+table(preds_reg_baja < 0.01)
+table(preds_reg < 0.01)
+prop.table(table(preds_reg_baja < 0.02, y_pr), 1)
+prop.table(table(preds_reg < 0.02, y_pr), 1)
+```
+
