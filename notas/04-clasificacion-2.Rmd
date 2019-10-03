@@ -169,7 +169,7 @@ búsqueda, etc.
 Supondremos entonces que hemos construido un clasificador $\hat{G}_\alpha$ a partir
 de probabilidades estimadas $\hat{p}_1(x) > \alpha$. Por ejemplo, podemos construir
 el clasificador de Bayes clasificando como *positivo* a todos los casos $x$ que
-complan $\hat{p}_1(x) > 0.5$, y negativos al resto.
+cumplan $\hat{p}_1(x) > 0.5$, y negativos al resto.
 
 
 ```{block2, type='comentario'}

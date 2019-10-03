@@ -152,7 +152,7 @@ simular_impago <- function(n = 500){
     x <- pmin(rexp(n, 100 / 40), 1)
     # las probabilidades de estar al corriente:
     probs <- p_1(x)
-    # finalmente, simulamos cuáles clientes siguen en al corriente y cuales no:
+    # finalmente, simulamos cuáles clientes siguen al corriente y cuales no:
     g <- ifelse(rbinom(length(x), 1, probs) == 1 , 1, 0)
     dat_ent <- tibble(x = x, p_1 = probs, g = g)
     dat_ent
@@ -496,7 +496,7 @@ con clasificadores y error de clasificación:
 
 - Tenemos una medida de qué tan seguros estamos en la clasificación (por ejemplo,
 $p_1 = 0.55$ en vez de $p_1 = 0.995$). 
-- La salida de probabilides es un insumo más útil para tareas posteriores (por ejemplo,
+- La salida de probabilidades es un insumo más útil para tareas posteriores (por ejemplo,
 si quisiéramos ofrecer las 3 clases más probables en clasificación de imágenes).
 - Muchas veces minimizar el error de clasificación no es de interés para el problema,
 sino identificar casos con probabilidades altas de una clase u otra.
@@ -796,6 +796,7 @@ de causalidad).
 Igual que en regresión lineal, podemos explicar el comportamiento de las
 probabilidades de clase ajustadas, pero es un poco más difícil por la 
 no linealidad introducida por la función logística.
+
 #### Ejemplo {-}
 Consideremos el modelo ajustado:
 ```{r}
@@ -811,11 +812,11 @@ options(digits = 2)
 coeficientes[1]
 h(coeficientes[1])
 ```
-Esto quiere decir que la probabilidad de estar al corriente es de 87\% cuando
+Esto quiere decir que la probabilidad de estar al corriente es de 85\% cuando
 la variable $x$ está en su media.
 Si $x$ se incrementa en una desviación estándar, la cantidad
 $$z = \beta_0 + \beta_1x$$
- la probabilidad de estar al corriente cambia a 67\%:
+ la probabilidad de estar al corriente cambia a 66\%:
 ```{r}
 h(coeficientes[1]+ coeficientes[2]*1)
 ```
@@ -823,7 +824,7 @@ Nótese que una desviación estándar de $x$ equivale a
 ```{r}
 sd(dat_ent$x)
 ```
-Así que en las unidades originales, un incremento de 30 en la variable $x$
+Así que en las unidades originales, un incremento de 29 en la variable $x$
 implica un cambio de 
 ```{r}
 h(coeficientes[1] + coeficientes[2]) - h(coeficientes[1])
@@ -930,7 +931,7 @@ modelo_diabetes <- keras_model_sequential() %>%
             activation = "sigmoid",    # combinar variables linealmente y aplicar función logística
             kernel_initializer = initializer_constant(0), #inicializamos coeficientes en 0
             bias_initializer = initializer_constant(0))   #inicializamos ordenada en 0
-    # compilar seleccionanfo cantidad a minimizar, optimizador y métricas
+    # compilar seleccionando cantidad a minimizar, optimizador y métricas
 modelo_diabetes %>% compile(
         loss = "binary_crossentropy",  # devianza es entropía cruzada
         optimizer = optimizer_sgd(lr = 0.75), # descenso en gradiente
@@ -1005,9 +1006,9 @@ que coincide con el número que obtuvimos en keras.
 
 ## Calibración de probabilidades
 
-Adiconalmente a buscar devianzas bajas, cuando usaremos las 
+Adicionalmente a buscar devianzas bajas, cuando usamos las 
 probabilidades obtenidas para más análisis o algún proceso,
-es necesario checar el ajuste. Podemos hacer esto haciendo pruebas de la *calibración*
+es necesario checar el ajuste. Podemos hacer esto realizando pruebas de la *calibración*
 de las probabilidades que arroja el modelo.
 
 Esto quiere decir que si el modelo nos dice que la probabilidad de que la clase 1 es 0.8,
