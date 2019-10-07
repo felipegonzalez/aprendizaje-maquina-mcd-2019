@@ -9,8 +9,9 @@ knitr::opts_chunk$set(fig.width=5, fig.asp=0.7)
 
 ## Descenso estocástico
 
-El algoritmo más popular para ajustar redes grandes es descenso estocástico, que
-es una modificación de nuestro algoritmo de descenso en gradiente. Antes de presentar
+El algoritmo más popular para ajustar redes grandes es descenso estocástico y
+varios derivados, que
+son modificaciones de nuestro algoritmo de descenso en gradiente. Antes de presentar
 las razones para usarlo, veremos cómo funciona para problemas con regresión
 lineal o logística.
 
@@ -152,7 +153,7 @@ ggplot(iteraciones_descenso, aes(x=beta_1, y=beta_2)) + geom_path() +
 
 Podemos comparar contando el tiempo por época:
 
-```{r, fig.width = 5, fig.height = 3}
+```{r, fig.width = 5, fig.height = 3, message = FALSE}
 library(gganimate)
 estocastico <- iter_estocastico
 descenso <- iteraciones_descenso
@@ -203,7 +204,7 @@ Separamos al azar los datos de entrenamiento en $n$ minilotes de tamaño $m$.
 - Para épocas $e =1,2,\ldots, n_e$
   - Calcular el gradiente sobre el minilote y hacer actualización, sucesivamente
   para cada uno de los minilotes $k=1,2,\ldots, n/m$:
-$$\beta_{i+1} = \beta_{i} - \frac{\eta}{m}\sum_{j=1}^m \nabla D^{(k)}_j (\beta_i)$$
+$$\beta_{i+1} = \beta_{i} - \eta\frac{1}{m}\sum_{j=1}^m \nabla D^{(k)}_j (\beta_i)$$
 donde $D^{(k)}_j (\beta_i)$ es la devianza para el $j$-ésimo caso del minilote
 $k$.
 - Repetir para la siguiente época (opcional: reordenar antes al azar los
@@ -422,7 +423,7 @@ Separamos al azar los datos de entrenamiento en $n$ minilotes de tamaño $m$.
   - Calcular el gradiente sobre el minilote y hacer actualización, sucesivamente
   para cada uno de los minilotes $k=1,2,\ldots, n/m$:
 $$\beta_{i+1} = \beta_{i} + v,$$
-$$v= \alpha v - \eta\sum_{j=1}^m \nabla D^{(k)}_j$$
+$$v= \alpha v - \eta\frac{1}{m}\sum_{j=1}^m \nabla D^{(k)}_j$$
 donde $D^{(k)}_j (\beta_i)$ es la devianza para el $j$-ésimo caso del minilote
 $k$. A $v$ se llama la *velocidad*
 - Repetir para la siguiente época
@@ -489,10 +490,10 @@ Valores típicos para momento son 0,0.5,0.9 o 0.99.
 
 Otras variaciones incluyen usar una tasa adaptativa de aprendizaje
 por cada parámetro (algoritmos adagrad, rmsprop, adam y adamax), o 
-actualizaciones un poco diferentes (nesterov). 
+actualizaciones de momento un poco diferentes (Nesterov). 
 
 Los más comunes
-son descenso estocástico, descenso estocástico con momento,
+son descenso estocástico, descenso estocástico con momento (a veces con la modificación de Nesterov),
 rmsprop y adam (Capítulo 8 del Deep Learning Book, [@Goodfellow-et-al-2016]).
 
 
