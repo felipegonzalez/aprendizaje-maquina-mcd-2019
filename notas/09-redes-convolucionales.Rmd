@@ -370,14 +370,14 @@ if(!usar_cache){
     
     model_2 %>% compile(
       loss = 'categorical_crossentropy',
-      optimizer = optimizer_sgd(lr = 0.005,  momentum = 0.9, nesterov = TRUE),
+      optimizer = optimizer_sgd(lr = 0.01,  momentum = 0.9, nesterov = TRUE),
       metrics = c('accuracy','categorical_crossentropy')
     )
     history <- model_2 %>% fit(
       x_train, y_train, 
-      epochs = 20, batch_size = 50, 
-      #verbose = 0,
-      validation_data = list(x_test, y_test)
+      epochs = 50, batch_size = 50, 
+      verbose = 0
+      #validation_data = list(x_test, y_test)
     )
     model_serialized <- serialize_model(model_2)
     saveRDS(model_serialized, file= 'cache_obj/red_conv_ser.rds')
@@ -395,6 +395,7 @@ score
 score_entrena <- model_2 %>% evaluate(x_train, y_train)
 score_entrena
 ```
+
 
 ### Conteo de parámetros {-}
 
@@ -424,8 +425,7 @@ tenemos `r num_params[1]` pesos más
 `r num_params[4]` sesgos, para un total de `r sum(num_params[3:4])` parámetros.
 3. En la primera capa densa tenemos `r num_params[5]` pesos más
 `r num_params[6]` sesgos, para un total de `r sum(num_params[5:6])` parámetros.
-4. En la segunda capa densa tenemos `r num_params[7]` pesos más
-`r num_params[8]` sesgos, para un total de `r sum(num_params[7:8])` parámetros.
+
 
 El total de parámetros es `r sum(num_params)`. Recalcula para confirmar
 este conteo de número de parámetros.
@@ -539,7 +539,7 @@ g_2
 ```
 
 Nótese que en esta gráfica los filtros tienen una
-estructura espacial (en general no se ven ruidosos). En esta gráfica:
+estructura espacial. En esta gráfica:
 
 - los renglones son las unidades de la capa origen (después de la primera convolución),
 - las columnas son las unidades de salida de la segunda capa de convolución.
@@ -566,6 +566,11 @@ grid.arrange(graficar_activaciones(activaciones_1, 8),
 grid.arrange(graficar_activaciones(activaciones_1, 18), 
              graficar_activaciones(activaciones_2, 18), ncol=2)
 ```
+
+Finalmente, podemos ver los pesos de la última capa, organizada por el pixel de la capa anterior
+que multiplican (una vez que hicimos el pooling de 6x6 a 3x3). Los renglones son los dígitos, 
+y las columnas son los 4 filtros de la capa
+convolucional anterior. Examina por ejemplo qué pasa con el dígito 1:
 
 ```{r}
 capa_densa <- wts[[5]] 

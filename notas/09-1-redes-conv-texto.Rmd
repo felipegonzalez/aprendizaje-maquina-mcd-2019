@@ -1,0 +1,214 @@
+# Redes convolucionales para texto
+
+Podemos usar la misma idea de redes convolucionales para datos en una dimensión, por ejemplo
+texto. 
+
+## Capas de embedding: codificación de palabras
+
+En ejemplos que vimos antes, convertimos documentos a vectores numéricos usando el modelo de
+*bag of words*, por ejemplo, donde cada elemento del vector corresponde a una palabra, y el valor
+es el número de ocurrencias de palabras en el texto, por ejemplo. Una estrategia más útil
+en redes neuronales con colecciones de texto grandes es *aprender* esta codificación de 
+palabras a vectores numéricos.
+
+En primer lugar, buscamos para cada palabra $w$ un vector asociado
+
+$$x(w) = (x_1(w),\ldots, x_d(w)),$$
+
+donde $d$ es una dimensión fija, por ejemplo $d=50$. En primer lugar, si usamos codificación dummy para
+las palabras, cada palabra es representada por un vector $v$ de tamaño $N$, que tiene ceros y un solo 1 en 
+la posición que corresponde a la palabra, y $N$ es el tamaño del vocabulario. Consideramos una
+matriz de pesos $H$ de tamaño $d\times N$, y ponemos
+$$x = Hv$$
+
+de modo que la columna $j$ de la matriz de pesos $H$ corresponde a la representación numérica de la
+$j$-ésima palabra. 
+
+Ahora consideramos un texto, que es una sucesión de $k$ palabras. Suponemos que $k$ es fijo (si es necesario, podemos truncar textos o agregar marcadores de palabra *vacía*, o padding). La primera capa de nuestra
+red toma la sucesión de palabras y sustituye para cada palabra un vector de dimensión $d$.
+
+
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(keras)
+use_session_with_seed(21)
+textos <- c("El perro corre", "El Gato corre rápido.", "El Gato es rápido", 
+            "El gato corre despacio", "El perro corre despacio")
+tokenizador <- text_tokenizer(num_words = 7, lower = TRUE, split = " ")
+```
+
+```{r}
+tokenizador %>% fit_text_tokenizer(textos)
+indices_palabras <- unlist(tokenizador$index_word)
+indices_palabras
+```
+
+Y podemos convertir a sucesiones, :
+
+```{r}
+textos_seq <- texts_to_sequences(tokenizador, textos)
+textos_seq
+```
+
+Ahora rellenamos para que las sucesiones tengan la misma longitud:
+
+```{r}
+textos_seq_relleno <- pad_sequences(textos_seq)
+textos_seq_relleno
+```
+
+Nótese que esta operación convierte las secuencias en una matriz (todas tienen la misma
+longitud).
+
+Ahora construimos una capa de embedding de dos dimensiones:
+
+```{r}
+modelo_emb <- keras_model_sequential()
+modelo_emb %>% 
+  layer_embedding(output_dim = 2, input_dim = 7, input_length = 4)
+modelo_emb
+```
+
+**Ejercicio**: esta red tiene 14 parámetros. ¿Por qué?
+
+Los pesos de esta capa (por el momento inicializados al azar) son:
+
+```{r}
+get_weights(modelo_emb)[[1]] %>% round(2)
+```
+
+Esta es la matriz $H^t$ mostrada arriba. Cada renglón corresponde a una palabra. Por ejemplo, la palabra *el* tiene
+vector asociado 
+
+```{r}
+get_weights(modelo_emb)[[1]][2,] %>% round(2)
+```
+
+Ahora vamos a ver la salida de esta capa cuando ponemos como entrada los datos:
+
+```{r}
+mat_emb <- predict(modelo_emb, textos_seq_relleno) 
+mat_emb %>% round(2)
+```
+
+Las dimensiones de esta matriz son (num_textos, longitud_texto, d), donde
+$d$ es la dimensión del embedding, en este caso $d=2$. 
+
+
+## Fast-text y pooling global
+
+Ahora queremos aprender los pesos de las palabras (la matriz $H$ mostrada arriba)
+para hacer alguna tarea de predicción. Uno de los modelos más
+simples que podemos usar es agregar una capa de pooling sobre cada el texto,
+promediando en cada dimensión.
+
+```{r}
+pesos_1 <- get_weights(modelo_emb)
+modelo_emb_pool <- keras_model_sequential()
+modelo_emb_pool %>% 
+  layer_embedding(output_dim = 2, input_dim = 7, input_length = 4, weights = pesos_1) %>% 
+  layer_global_average_pooling_1d() 
+predict(modelo_emb_pool, textos_seq_relleno) %>% round(3)
+```
+
+Que es lo mismo que 
+
+```{r}
+apply(mat_emb, c(1,3), mean) %>% round(3)
+```
+
+Y finalmente ponemos una capa densa al final, que solo tiene dos entradas. Este es un modelo tipo [fasttext](https://arxiv.org/pdf/1607.01759.pdf):
+
+```{r}
+modelo_ft <- keras_model_sequential()
+modelo_ft %>% 
+  layer_embedding(output_dim = 2, input_dim = 7, input_length = 4,
+                  embeddings_regularizer = regularizer_l2(0.2)) %>% 
+  layer_global_average_pooling_1d() %>% 
+  layer_dense(units = 1, activation = "sigmoid")
+predict(modelo_ft, textos_seq_relleno) %>% round(3)
+```
+Que son las probabilidades para cada uno de los textos. La arquitectura del modelo completo es:
+
+```{r}
+modelo_ft
+```
+
+Ahora podemos intentar hacer un detector de gatos que corren rápido:
+
+```{r}
+y <- c(0, 1, 1, 0, 0)
+compile(modelo_ft, loss = 'binary_crossentropy',
+      optimizer = optimizer_sgd(lr = 0.5))
+historia <- fit(modelo_ft, textos_seq_relleno, y, 
+      epochs = 200, batch_size = 5, verbose = 0)
+predict(modelo_ft, textos_seq_relleno)
+```
+
+Examinamos los pesos obtenidos:
+
+```{r}
+lapply(get_weights(modelo_ft), round, 2)
+```
+Interpreta las dimensiones que aprendimos, y explica cómo funciona esta red.
+
+
+
+## Convolución en 1 dimensión
+
+Ahora podemos probar haciendo convoluciones a lo largo del texto. La idea es:
+
+- Usar una capa de embedding. Cada texto de longitud $k$ se representa como $d$ sucesiones
+de longitud $k$
+- Para una de estas dimensiones, un filtro convolucional calcula, en cada ventana del texto, un promedio ponderado de las palabras que existen en esa ventana. Esto permite capturar aspectos que no solo dependen de la aparición de una palabra.
+- Un filtro completo opera sobre todas las dimensiones del embedding (con un vector de filtro distinto en cada dimensión), y suma los resultados sobre todas las dimensiones.
+
+### Ejemplo
+
+```{r}
+textos <- c("El perro corre", "El Gato corre rápido.", "El Gato es rápido", 
+            "El Gato corre no rápido.",
+            "El gato corre despacio", "El perro corre despacio", "Mi gato corre poco rápido",
+            "El perro corre rápido", "El gato no corre despacio", "El gato es poco rápido",
+            "este gato es rápido", "el perro corre poco despacio", "el perro corre despacio")
+y <- c(0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0)
+tokenizador <- text_tokenizer(num_words = 10, lower = TRUE, split = " ")
+tokenizador %>% fit_text_tokenizer(textos)
+indices_palabras <- unlist(tokenizador$index_word[1:9])
+indices_palabras
+textos_seq <- texts_to_sequences(tokenizador, textos)
+textos_entrena <- pad_sequences(textos_seq)
+```
+
+Y ahora construimos el modelo y entrenamos:
+
+```{r}
+modelo_ft <- keras_model_sequential()
+modelo_ft %>% 
+  layer_embedding(output_dim = 3, input_dim = 10, input_length = 5,
+                  embeddings_regularizer = regularizer_l1(0.005)) %>% 
+  layer_conv_1d(filters = 1, kernel_size = 3, kernel_regularizer = regularizer_l1(0.005)) %>% 
+  layer_flatten() %>% 
+  layer_dense(units = 1, activation = "sigmoid")
+```
+
+```{r}
+compile(modelo_ft, loss = 'binary_crossentropy',
+      optimizer = optimizer_sgd(lr = 0.05))
+historia <- fit(modelo_ft, textos_entrena, y, 
+      epochs = 1000, batch_size = 11, verbose = 0)
+predict(modelo_ft, textos_entrena) %>% round(2)
+```
+
+```{r}
+pesos <- map(get_weights(modelo_ft), round, 1)
+rownames(pesos[[1]]) <- c("0", indices_palabras)
+pesos
+```
+
+
+Interpreta cómo funciona esta red.
+
+
+## Ejemplo (imdb)
