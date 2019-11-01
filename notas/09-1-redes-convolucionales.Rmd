@@ -53,6 +53,7 @@ frecuencia:
 #install.packages("RcppRoll")
 library(tidyverse)
 library(RcppRoll)
+library(gridExtra)
 h <- function(x){ifelse(x>0,x,0)}
 datos <- data_frame(t = 1:length(BJsales),
                     serie = as.numeric(BJsales) + rnorm(length(BJsales), 0, 10)) %>%
@@ -464,7 +465,6 @@ tienen estructura espacial. Interpreta cada uno de estos filtros.
 Podemos ahora ver las activaciones de la primera capa para algunos dígitos:
 
 ```{r, message=FALSE, warning = FALSE}
-library(gridExtra)
 red_conv_1 <- keras_model(inputs = model_2$input,
     outputs = get_layer(model_2, 'conv_1')$output)
 activaciones_1 <- predict(red_conv_1, x_train[1:50,,,,drop=FALSE])
