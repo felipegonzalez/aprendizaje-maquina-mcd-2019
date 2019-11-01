@@ -339,7 +339,7 @@ y usaremos una arquitectura un poco más simple:
 # set.seed no funciona. Podemos usar use_session_with_seed https://keras.rstudio.com/articles/faq.html#how-can-i-obtain-reproducible-results-using-keras-during-development
 #
 use_session_with_seed(72881)
-usar_cache <- FALSE
+usar_cache <- TRUE
 if(!usar_cache){
     # correr modelo y guardarlo serializado
     #set.seed(213)
