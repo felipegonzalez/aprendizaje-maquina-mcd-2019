@@ -32,7 +32,6 @@ red toma la sucesión de palabras y sustituye para cada palabra un vector de dim
 ```{r, message=FALSE, warning=FALSE}
 library(tidyverse)
 library(keras)
-use_session_with_seed(21)
 textos <- c("el gato no corre", "el gato corre", "el perro no corre", "el perro corre",
             "el perro duerme", "el perro no duerme", "el gato duerme", "un gato que corre",
             "un gato corre")
@@ -199,9 +198,10 @@ modelo_ft %>%
 
 ```{r}
 compile(modelo_ft, loss = 'binary_crossentropy',
-      optimizer = optimizer_sgd(lr = 0.01))
+      optimizer = optimizer_sgd(lr = 0.05))
 historia <- fit(modelo_ft, textos_entrena, y, 
-      epochs = 1000, batch_size = 10, verbose = 0)
+      epochs = 1000, batch_size = length(textos_entrena), 
+      verbose = 0)
 predict(modelo_ft, textos_entrena) %>% round(2)
 ```
 
@@ -221,4 +221,64 @@ Interpreta cómo funciona esta red:
 
 ## Ejemplo (imdb)
 
+Ahora consideramos el ejemplo de imdb de predicción de polaridad (positiva o negativa) a partir
+de textos de reseñas de películas (de [esta liga](https://keras.rstudio.com/articles/examples/imdb_cnn.html).
 
+```{r}
+maxlen = 400
+imdb <- readRDS("../datos/imdb_5000.rds")
+x_train <- imdb$train$x %>%
+  pad_sequences(maxlen = maxlen)
+y_train <- imdb$train$y
+x_test <- imdb$test$x %>%
+  pad_sequences(maxlen = maxlen)
+y_test <- imdb$test$y
+length(y_train)
+length(y_test)
+```
+
+Definimos el modelo:
+
+```{r}
+filtros <- 100
+embedding_dims <- 50
+max_palabras <- 5000
+dims_oculta <- 100
+kernel_tamaño <- 3
+model <- keras_model_sequential()
+model %>% 
+  # Start off with an efficient embedding layer which maps
+  # the vocab indices into embedding_dims dimensions
+  layer_embedding(max_palabras, embedding_dims, input_length = maxlen) %>%
+  layer_dropout(0.2) %>%
+  # Add a Convolution1D, which will learn filters
+    # Word group filters of size filter_length:
+  layer_conv_1d(
+    filtros, kernel_tamaño, 
+    padding = "valid", activation = "relu") %>%
+  # Apply max pooling:
+  layer_global_max_pooling_1d() %>%
+  # Add a dense hidden layer:
+  layer_dense(dims_oculta, activation = "relu") %>%
+  # Apply 20% layer dropout
+  layer_dropout(0.2) %>%
+  # Project onto a single unit output layer, and squash it with a sigmoid
+  layer_dense(1, activation = "sigmoid") 
+```
+
+```{r}
+# Compilar y entrenar
+model %>% compile(
+  loss = "binary_crossentropy",
+  optimizer = "adam",
+  metrics = "accuracy"
+)
+
+model %>%
+  fit(
+    x_train, y_train,
+    batch_size = 32,
+    epochs = 2,
+    validation_data = list(x_test, y_test)
+  )
+```
