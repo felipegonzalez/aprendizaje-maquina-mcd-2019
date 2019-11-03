@@ -32,9 +32,10 @@ red toma la sucesión de palabras y sustituye para cada palabra un vector de dim
 ```{r, message=FALSE, warning=FALSE}
 library(tidyverse)
 library(keras)
-use_session_with_seed(21)
-textos <- c("El perro corre", "El Gato corre rápido.", "El Gato es rápido", 
-            "El gato corre despacio", "El perro corre despacio")
+use_session_with_seed(142, disable_parallel_cpu = FALSE)
+textos <- c("el gato no corre", "el gato corre", "el perro no corre", "el perro corre",
+            "el perro duerme", "el perro no duerme", "el gato duerme", "un gato que corre",
+            "un gato corre")
 tokenizador <- text_tokenizer(num_words = 7, lower = TRUE, split = " ")
 ```
 
@@ -124,7 +125,7 @@ Y finalmente ponemos una capa densa al final, que solo tiene dos entradas. Este 
 modelo_ft <- keras_model_sequential()
 modelo_ft %>% 
   layer_embedding(output_dim = 2, input_dim = 7, input_length = 4,
-                  embeddings_regularizer = regularizer_l2(0.2)) %>% 
+                  embeddings_regularizer = regularizer_l2(0.05)) %>% 
   layer_global_average_pooling_1d() %>% 
   layer_dense(units = 1, activation = "sigmoid")
 predict(modelo_ft, textos_seq_relleno) %>% round(3)
@@ -135,27 +136,29 @@ Que son las probabilidades para cada uno de los textos. La arquitectura del mode
 modelo_ft
 ```
 
-Ahora podemos intentar hacer un detector de gatos que corren rápido:
+Ahora podemos intentar hacer un detector de gatos que corren:
 
 ```{r}
-y <- c(0, 1, 1, 0, 0)
+y <- c(0, 1, 0, 0,0,0,0,1,1)
 compile(modelo_ft, loss = 'binary_crossentropy',
       optimizer = optimizer_sgd(lr = 0.5))
 historia <- fit(modelo_ft, textos_seq_relleno, y, 
-      epochs = 200, batch_size = 5, verbose = 0)
-predict(modelo_ft, textos_seq_relleno)
+      epochs = 500, batch_size = 9, verbose = 0)
+predict(modelo_ft, textos_seq_relleno) %>% round(2)
 ```
 
 Examinamos los pesos obtenidos:
 
 ```{r}
-lapply(get_weights(modelo_ft), round, 2)
+pesos <- map(get_weights(modelo_ft), round, 1)
+rownames(pesos[[1]]) <- c("0", indices_palabras[1:6])
+pesos
 ```
 Interpreta las dimensiones que aprendimos, y explica cómo funciona esta red.
 
 
 
-## Convolución en 1 dimensión
+## Filtros convolucionales en 1 dimensión
 
 Ahora podemos probar haciendo convoluciones a lo largo del texto. La idea es:
 
@@ -167,15 +170,16 @@ de longitud $k$
 ### Ejemplo
 
 ```{r}
-textos <- c("El perro corre", "El Gato corre rápido.", "El Gato es rápido", 
-            "El Gato corre no rápido.",
-            "El gato corre despacio", "El perro corre despacio", "Mi gato corre poco rápido",
-            "El perro corre rápido", "El gato no corre despacio", "El gato es poco rápido",
-            "este gato es rápido", "el perro corre poco despacio", "el perro corre despacio")
-y <- c(0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0)
-tokenizador <- text_tokenizer(num_words = 10, lower = TRUE, split = " ")
+textos <- c("El Gato corre rápido.", "El Gato no corre", 
+            "El Gato corre.", "Un gato corre", "un gato que corre", "un gato no corre",
+            "un gato duerme", "un gato come", "un gato no come", "un gato no duerme",
+            "El perro corre rápido.", "El perro no corre", 
+            "El perro corre.", "Un perro corre", "un perro que corre", "un perro no corre",
+            "el perro duerme", "un perro no duerme")
+y <- c(1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+tokenizador <- text_tokenizer(num_words = 11, lower = TRUE, split = " ")
 tokenizador %>% fit_text_tokenizer(textos)
-indices_palabras <- unlist(tokenizador$index_word[1:9])
+indices_palabras <- unlist(tokenizador$index_word[1:10])
 indices_palabras
 textos_seq <- texts_to_sequences(tokenizador, textos)
 textos_entrena <- pad_sequences(textos_seq)
@@ -186,29 +190,97 @@ Y ahora construimos el modelo y entrenamos:
 ```{r}
 modelo_ft <- keras_model_sequential()
 modelo_ft %>% 
-  layer_embedding(output_dim = 3, input_dim = 10, input_length = 5,
-                  embeddings_regularizer = regularizer_l1(0.005)) %>% 
-  layer_conv_1d(filters = 1, kernel_size = 3, kernel_regularizer = regularizer_l1(0.005)) %>% 
+  layer_embedding(output_dim = 1, input_dim = 11, input_length = 4,
+                  embeddings_regularizer = regularizer_l1(0.001)) %>% 
+  layer_conv_1d(filters = 1, kernel_size = 3, kernel_regularizer = regularizer_l1(0.001)) %>% 
   layer_flatten() %>% 
   layer_dense(units = 1, activation = "sigmoid")
 ```
 
 ```{r}
 compile(modelo_ft, loss = 'binary_crossentropy',
-      optimizer = optimizer_sgd(lr = 0.05))
+      optimizer = optimizer_sgd(lr = 0.01))
 historia <- fit(modelo_ft, textos_entrena, y, 
-      epochs = 1000, batch_size = 11, verbose = 0)
+      epochs = 1000, batch_size = length(textos_entrena), 
+      verbose = 0)
 predict(modelo_ft, textos_entrena) %>% round(2)
 ```
 
 ```{r}
 pesos <- map(get_weights(modelo_ft), round, 1)
-rownames(pesos[[1]]) <- c("0", indices_palabras)
+rownames(pesos[[1]]) <- c("0", indices_palabras[1:10])
 pesos
 ```
 
 
-Interpreta cómo funciona esta red.
+Interpreta cómo funciona esta red:
 
+1. Escribe las frase el gato corre, el gato no corre, el perro corre, el perro no duerme. Rellena para que tengan la misma longitud.
+2. Sustituye el valor de la dimensión latente para cada palabra
+3. Calcula la convolución. ¿Cuándo tiene valores grandes cada convolución?
+4. Explica por qué hay 2 coeficientes en la última capa.
 
 ## Ejemplo (imdb)
+
+Ahora consideramos el ejemplo de imdb de predicción de polaridad (positiva o negativa) a partir
+de textos de reseñas de películas (de [esta liga](https://keras.rstudio.com/articles/examples/imdb_cnn.html).
+
+```{r}
+maxlen = 400
+imdb <- readRDS("../datos/imdb_5000.rds")
+x_train <- imdb$train$x %>%
+  pad_sequences(maxlen = maxlen)
+y_train <- imdb$train$y
+x_test <- imdb$test$x %>%
+  pad_sequences(maxlen = maxlen)
+y_test <- imdb$test$y
+length(y_train)
+length(y_test)
+```
+
+Definimos el modelo:
+
+```{r}
+filtros <- 100
+embedding_dims <- 50
+max_palabras <- 5000
+dims_oculta <- 100
+kernel_tamaño <- 3
+model <- keras_model_sequential()
+model %>% 
+  # Start off with an efficient embedding layer which maps
+  # the vocab indices into embedding_dims dimensions
+  layer_embedding(max_palabras, embedding_dims, input_length = maxlen) %>%
+  layer_dropout(0.2) %>%
+  # Add a Convolution1D, which will learn filters
+    # Word group filters of size filter_length:
+  layer_conv_1d(
+    filtros, kernel_tamaño, 
+    padding = "valid", activation = "relu") %>%
+  # Apply max pooling:
+  layer_global_max_pooling_1d() %>%
+  # Add a dense hidden layer:
+  layer_dense(dims_oculta, activation = "relu") %>%
+  # Apply 20% layer dropout
+  layer_dropout(0.2) %>%
+  # Project onto a single unit output layer, and squash it with a sigmoid
+  layer_dense(1, activation = "sigmoid") 
+```
+
+```{r}
+# Compilar y entrenar
+model %>% compile(
+  loss = "binary_crossentropy",
+  optimizer = "adam",
+  metrics = "accuracy"
+)
+
+historia <- model %>%
+  fit(
+    x_train, y_train,
+    batch_size = 32,
+    epochs = 2,
+    validation_data = list(x_test, y_test)
+  )
+historia
+```

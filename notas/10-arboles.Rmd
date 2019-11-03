@@ -173,7 +173,9 @@ grande y luego podar al tamaño correcto.
 #### Ejemplo {-}
 
 Construímos algunos árboles con los datos de spam:
-
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+install.packages("rpart.plot")
+```
 
 ```{r, message=FALSE, warning=FALSE}
 library(rpart)    			   
