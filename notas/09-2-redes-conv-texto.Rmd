@@ -199,7 +199,7 @@ modelo_ft %>%
 
 ```{r}
 compile(modelo_ft, loss = 'binary_crossentropy',
-      optimizer = optimizer_sgd(lr = 0.01))
+      optimizer = optimizer_sgd(lr = 0.05))
 historia <- fit(modelo_ft, textos_entrena, y, 
       epochs = 1000, batch_size = length(textos_entrena), 
       verbose = 0)
