@@ -338,7 +338,7 @@ y usaremos una arquitectura un poco más simple:
 # reproducibilidad en keras es más difícil, pues hay varias capas de software
 # set.seed no funciona. Podemos usar use_session_with_seed https://keras.rstudio.com/articles/faq.html#how-can-i-obtain-reproducible-results-using-keras-during-development
 #
-use_session_with_seed(72881)
+use_session_with_seed(728811)
 usar_cache <- TRUE
 if(!usar_cache){
     # correr modelo y guardarlo serializado
@@ -354,7 +354,7 @@ if(!usar_cache){
                     name = 'conv_1') %>%
       layer_max_pooling_2d(pool_size = c(2, 2), name = "conv_1_down") %>% 
       layer_dropout(rate = 0.2) %>% 
-      layer_conv_2d(filters = 4, kernel_size = c(3, 3), 
+      layer_conv_2d(filters = 8, kernel_size = c(3, 3), 
                     activation = 'relu',
                     kernel_regularizer = regularizer_l2(lambda),
                     name = 'conv_2') %>% 
@@ -362,19 +362,19 @@ if(!usar_cache){
       layer_dropout(rate = 0.2) %>% 
       layer_flatten() %>% 
       layer_dense(units = 30, activation = 'relu', 
-                  kernel_regularizer = regularizer_l2(0.0001)) %>% 
-      layer_dropout(0.2) %>% 
+                  kernel_regularizer = regularizer_l2(0.001)) %>% 
+      layer_dropout(0.5) %>% 
       layer_dense(units = 10, activation = 'softmax', 
-                  kernel_regularizer = regularizer_l2(0.0001))
+                  kernel_regularizer = regularizer_l2(0.001))
     
     model_2 %>% compile(
       loss = 'categorical_crossentropy',
-      optimizer = optimizer_sgd(lr = 0.005,  momentum = 0.9, nesterov = TRUE),
+      optimizer = optimizer_sgd(lr = 0.002,  momentum = 0.9, nesterov = TRUE),
       metrics = c('accuracy','categorical_crossentropy')
     )
     history <- model_2 %>% fit(
       x_train, y_train, 
-      epochs = 300, batch_size = 64, 
+      epochs = 50, batch_size = 64, 
       verbose = 0,
       validation_data = list(x_test, y_test)
     )
@@ -537,7 +537,7 @@ dim(activaciones_2)
 
 ```{r, include = FALSE}
 digitos_ind <- c(5, 49, 3, 45, 11, 18, 10, 4, 15, 28, 1, 44, 2, 9)
-grafs_0 <- map(digitos_ind, ~ graficar_activaciones(activaciones_2, .x, filtros = c(1,2,3,4)))
+grafs_0 <- map(digitos_ind, ~ graficar_activaciones(activaciones_2, .x, filtros = 1:8))
 ```
 
 ```{r, fig.width = 14, fig.height = 8}
@@ -591,12 +591,12 @@ generate_pattern <- function(layer_name, filter_index, size = 32) {
   # We start from a gray image with some noise
   input_img_data <- array(runif(size * size * 1), dim = c(1, size, size, 1))*0.2 + 0.5
   
-  step <- 0.05
-  for (i in 1:1000) {
+  step <- 0.1
+  for (i in 1:100) {
     c(loss_value, grads_value) %<-% iterate(list(input_img_data))
     input_img_data <- input_img_data + (grads_value * step) 
     input_img_data <- input_img_data + 
-        (array(runif(size * size * 1), dim = c(1, size, size, 1)) - 0.5)*0.2
+        (array(runif(size * size * 1), dim = c(1, size, size, 1)) - 0.5)*0.3
   }
   for (i in 1:500) {
     c(loss_value, grads_value) %<-% iterate(list(input_img_data))
@@ -621,9 +621,9 @@ for(i in 1:6){
 
 
 
-```{r, fig.width=6, fig.height=2}
-par(mfrow=c(1,4))
-for(i in 1:4){
+```{r, fig.width=10, fig.height=5}
+par(mfrow=c(2,4))
+for(i in 1:8){
     generate_pattern("conv_2_down", i) %>% rotate %>% image    
 }
 ```
