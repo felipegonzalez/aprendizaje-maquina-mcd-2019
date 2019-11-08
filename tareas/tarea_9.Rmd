@@ -1,0 +1,131 @@
+---
+title: "Ajustando redes convolucionales"
+output: html_notebook
+---
+
+Consideramos el dataset [cifar10](https://www.cs.toronto.edu/~kriz/cifar.html), que consiste de imágenes 32x32 en 10 categorías (coche, gato, perro, camión, etc.)
+
+```{r, message = FALSE, warning = FALSE, fig.width = 2, fig.height = 2}
+library(keras)
+library(imager)
+# bajar datos
+cifar10 <- dataset_cifar10()
+x_train <- cifar10$train$x/255
+x_test <- cifar10$test$x/255
+y_train <- to_categorical(cifar10$train$y, num_classes = 10)
+y_test <- to_categorical(cifar10$test$y, num_classes = 10)
+table(cifar10$train$y)
+plot_image <- function(arr){
+  plot(aperm(arr, c(2, 1, 3)) %>% as.cimg, axes = FALSE)
+}
+plot_image(x_train[8,,,])
+cifar10$train$y[8]
+```
+
+**Pregunta**: para este problema, la tasa base de clasificación es de 10% (sin usar modelo), pues hay 10 categorías aproximadamente balanceadas. Investiga cuál es el desempeño humano para este problema de clasificación, de forma que tengas una idea de qué significa una tasa "buena" de clasificación correcta. 
+
+
+
+
+```{r}
+model <- keras_model_sequential()
+model %>%
+  # Primera capa convolucional
+  layer_conv_2d(filter = 32, kernel_size = c(3,3), 
+                padding = "same", input_shape = c(32, 32, 3)) %>%
+  layer_activation("relu") %>% 
+  # Segunda capa convolucional
+  layer_conv_2d(filter = 32, kernel_size = c(3,3)) %>%
+  layer_activation("relu") %>%
+  # Max pooling
+  layer_max_pooling_2d(pool_size = c(2,2)) %>%
+  layer_dropout(0.25) %>%
+  # Dos capas convlucionales adicionales:
+  layer_conv_2d(filter = 64, kernel_size = c(3,3), padding = "same") %>%
+  layer_activation("relu") %>%
+  layer_conv_2d(filter = 64, kernel_size = c(3,3)) %>%
+  layer_activation("relu") %>%
+  layer_max_pooling_2d(pool_size = c(2,2)) %>%
+  layer_dropout(0.25) %>%
+  layer_flatten() %>%
+  layer_dense(512) %>%
+  layer_activation("relu") %>%
+  layer_dropout(0.5) %>%
+  layer_dense(10) %>%
+  layer_activation("softmax")
+model
+```
+
+**Preguntas**
+
+Cuenta parámetros para esta red:
+
+1. Explica por qué hay 896 parámetros en la primera capa convolucional (observa que las imagenes originales tienen tres canales pues son a color).
+2. ¿Por qué la primera capa densa tiene 590336 parámetros?
+
+
+Ahora vamos a hacer algunos experimentos para ajustar esta red, primero con un número
+reducido de épocas (3). Pureba con dos tasas de aprendizaje: 0.001, 0.0001 
+
+```{r}
+optimizador <- optimizer_rmsprop(lr = 0.0001)
+model %>% compile(loss = "categorical_crossentropy",
+                  optimizer = optimizador,
+                  metrics = "accuracy")
+```
+
+
+```{r}
+historia <- 
+  model %>% fit(
+    x_train, y_train,
+    batch_size = 32,
+    epochs = 3,
+    validation_data = list(x_test, y_test),
+    shuffle = TRUE
+  )
+```
+
+
+**Preguntas**:
+1. Ve [este video](https://www.youtube.com/watch?v=_e-LFe_igno) acerca del optimizador
+rmsprop. ¿Qué idea usa para acelerar el entrenamiento de la red? Según el video,
+qué algoritmo de optimización combina esta idea de rmsprop con la idea de momento que vimos en clase?
+2. ¿Por qué durante el entrenamiento el *accuracy* de entrenamiento tiende a verse considerablemente más bajo que el de validación? (piensa en el efecto del *dropout*).
+3. ¿Cuál tasa de aprendizaje parece estar funcionando mejor?
+
+
+## Aumentar los datos
+
+Una técnica para robustecer desempeño de los modelos es generar datos artificiales
+que sin embargo son imágenes "posibles". En este caso, para cada minilote
+de 32 imágenes, les aplicamos rotaciones, reflexiones y traslaciones al azar:
+
+Nota: vuelve a definir el modelo arriba para no correr estas iteraciones encima de 
+las que ya tenías.
+
+```{r}
+ datagen <- image_data_generator(
+    rotation_range = 0,
+    width_shift_range = 0.1,
+    height_shift_range = 0.1,
+    horizontal_flip = TRUE
+  )
+  
+  datagen %>% fit_image_data_generator(x_train)
+  
+  model %>% fit_generator(
+    flow_images_from_data(x_train, y_train, datagen, batch_size = 32),
+    steps_per_epoch = as.integer(50000/32), 
+    epochs = 5, 
+    validation_data = list(x_test, y_test)
+  )
+```
+
+
+
+**Pregunta**: Ajusta al menos unas 20 épocas. ¿Qué pérdida log obtienes y que accuracy en los datos de prueba? ¿Cómo se comparan con el ejemplo donde no hicimos aumentación de datos?
+
+
+
+**Nota**: Si tienes tiempo, ajusta por unas 100 épocas. Puedes también experimentar corriéndolo en Google cloud [ver aquí](https://tensorflow.rstudio.com/tools/cloudml/articles/getting_started.html), pero hay que pagar por el uso.
