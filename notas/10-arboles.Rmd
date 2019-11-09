@@ -437,7 +437,7 @@ no esté en el árbol no quiere decir que no sea "importante" para predecir
 en cortes duros si/no. Esto produce desempeño predictivo relativamente malo.
 (p ej: una pequeña diferencia en cortes iniciales puede resultar en estructuras
 de árbol totalmente distintas).
-4. Adicoinalmente, no son apropiados cuando hay variables categóricas con 
+4. Adicionalmente, no son apropiados cuando hay variables categóricas con 
 muchas niveles: en estos casos, el árbol sobreajusta desde los primeros
 cortes, y las predicciones son malas.
 
@@ -716,9 +716,9 @@ $${\mathcal L}_1^*, {\mathcal L}_2^*, \ldots, {\mathcal L}_B^*,$$
 2. (Regresión) Promediamos árboles para reducir varianza
  $$T^*(x) = \frac{1}{B}\sum_{i=b}^B  T_b^*(x)$$
 3. (Clasificación) Tomamos votos sobre todos los árboles:
- $$T^*(x) = argmax_g \{ \# \{i|T_b^*(x)=g\}\}.$$ Podemos
- también calcular probabilidades promedio sobre todos
- los árboles.
+ $$T^*(x) = argmax_g \{ \# \{i|T_b^*(x)=g\}\}.$$ 
+Podemos también calcular probabilidades promediando sobre todos los árboles
+     las proporciones de clase de cada árbol.
 
 Bosques aleatorios muchas veces reduce el error de predicción gracias
 a una reducción a veces considerable de varianza. El objetivo final es reducir
@@ -742,7 +742,8 @@ es más grande que la pérdida en varianza.
 5. Intrementar $m$
   - Disminuye el sesgo del bosque (menos restricción)
   - Aumenta la correlacción entre árobles y disminuye la varianza de cada árbol
-
+6. Cuando usamos bosques aleatorios para estimar probabilidades de clase, como siempre,
+es necesario checar la calibración de esas probabilidades (ver sección de regresión logística).
 
 ### Ejemplo
 Regresamos a nuestro ejemplo de spam. Intentemos con 500 árboles, y 
@@ -751,8 +752,8 @@ Regresamos a nuestro ejemplo de spam. Intentemos con 500 árboles, y
 ```{r, warning=FALSE, message=FALSE}
 library(ranger)
 bosque_spam <-ranger(factor(spam) ~ ., data = spam_entrena, 
-                           num.trees = 1500, mtry = 6, importance="permutation",
-                     probability = TRUE)
+    num.trees = 1500, mtry = 6, importance="permutation", 
+    probability = TRUE)
 ```
 
 Evaluamos desempeño, donde vemos que obtenemos una mejora inmediata con respecto
@@ -811,7 +812,7 @@ plot(perfs[[4]], add=TRUE, col='purple', lwd=2)
 Los bosques aleatorios, por su proceso de construcción, tienen aspectos interesantes.
 
 En primer lugar, tenemos la estimación de error de prueba **Out-of-Bag** (OOB), que 
-es una estimación honesta del error de predicción basada en el proceso de bagging.
+es una estimación *honesta* del error de predicción basada en el proceso de bagging.
 
 Obsérvese en primer lugar, que cuando tomamos muestras con reemplazo para construir
 cada árbol, algunos casos de entrenamiento aparecen más de una vez, y otros 
@@ -894,14 +895,108 @@ afinar los parámetros del modelo (principalmente el número $m$ de variables qu
 en cada corte).
 
 #### Ejempo {-}
-Para el ejemplo de spam, podemos ver el error OOB ( y matriz de confusión también OOB):
+Para el ejemplo de spam, podemos ver el error OOB:
 ```{r}
 bosque_spam
 ```
 
-Que comparamos con
+Que comparamos con el score de brier de prueba:
 ```{r}
+score_brier <- function(y, p){
+    mean((y - p)^2)
+}
 prop_bosque <- probas[,2]
+score_brier(spam_prueba$spam, prop_bosque) 
+```
+
+Para calcular otras medidas OOB, podemos extraer directamente las predicciones OOB:
+
+```{r}
+preds_oob <- bosque_spam$predictions
+head(preds_oob)
+```
+
+La estimación OOB del error de clasificación cortando en 0.5 es entonces:
+
+```{r}
+tab_confusion_oob <- table(preds_oob[, 2] > 0.5, spam_entrena$spam)
+1 - sum(diag(tab_confusion_oob))/sum(tab_confusion_oob)
+```
+
+Que comparamos con el error de prueba:
+
+```{r}
 tab <- table(prop_bosque> 0.5, spam_prueba$spam) %>% prop.table() %>% round(3)
 1-sum(diag(tab))
 ```
+
+### Calibración de probabilidades
+
+Finalmente, podemos checar la calibración de nuestro bosque:
+
+```{r, fig.width = 4, fig.height = 3}
+calib_tbl <- tibble(prob = prop_bosque, obs = spam_prueba$spam)
+ggplot(calib_tbl, aes(x = prop_bosque, y = obs)) +
+    geom_smooth(method = "loess", span = 0.5, se = FALSE, method.args=list(degree = 1)) + 
+    geom_abline() + geom_rug()
+```
+
+y vemos que nuestro modelo no tiene una calibración muy buena: las probabilidades
+obtenidas del bosque están algo encogidas hacia el centro: son algo "subconfiadas".
+
+- Podemos intentar un bosque con distintos parámetros: específicamente número mínimo de casos por nodo terminal, y distinto número de *mtry*.
+- Podemos calibrar las probabilidades de este modelo usando regresión isotónica o regresión con splines no decrecientes. 
+
+Vamos a ver la segunda técnica. En primer lugar, tendremos que separar nuestra
+de muestra de prueba en dos partes: una de calibración, y otra de evaluación:
+
+```{r}
+set.seed(23441)
+indice_calib <- sample(1:length(prop_bosque), length(prop_bosque)*0.8)
+prop_bosque_calib <- prop_bosque[indice_calib]
+prop_bosque_eval <- prop_bosque[-indice_calib]
+y_calib <- spam_prueba$spam[indice_calib]
+y_eval <- spam_prueba$spam[-indice_calib]
+```
+
+Ahora construimos una base de splines no decrecientes usando la muestra
+de calibración:
+
+```{r, fig.width = 4, fig.height = 3}
+library(splines2)
+# base de splines no decrecientes:
+base_splines <- iSpline(prop_bosque_calib, knots = c(1/3, 2/3), degree = 2)
+matplot(prop_bosque_calib, base_splines, cex = 0.2)
+```
+
+Y hacemos una regresión de $y$ en función de la base de splines
+(que son derivados de *prop_bosque*). La función que transforma las
+probabilidades es:
+
+```{r, fig.width =4, fig.height = 3}
+dat_calib <- cbind(y_calib, base_splines)
+modelo_calib <- lm(y_calib ~  -1+., data.frame(dat_calib))
+prob_calib <- fitted(modelo_calib)
+qplot(prop_bosque_calib, prob_calib)
+```
+
+Ahora evaluamos la calibración:
+
+```{r, fig.width =4, fig.height = 3}
+base_splines_eval <- iSpline(prop_bosque_eval, knots = c(1/3, 2/3), degree = 2)
+probs_calibradas <- predict(modelo_calib, data.frame(base_splines_eval))
+calib_tbl <- tibble(prob = probs_calibradas, 
+                    obs = y_eval)
+ggplot(calib_tbl, aes(x = probs_calibradas, y = obs)) +
+    geom_smooth(method = "loess", span = 0.5, se = FALSE, method.args=list(degree = 1)) + 
+    geom_abline() + geom_rug()
+```
+
+**Observaciones**:
+
+1. En las graficas de calibración, puedes también cortar las probabilidades en rangos,
+y calcular el porcentaje de la clase 1 en cada rango (ver discusión en sección de 
+clasificación y regresión logística), junto con intervalos de confianza.
+2. Para el caso multiclase, se puede intentar el siguiente procedimiento: calibrar
+cada una de las clases, y después normalizar las probabilidades obtenidas. Este
+procedimiento se puede iterar.
