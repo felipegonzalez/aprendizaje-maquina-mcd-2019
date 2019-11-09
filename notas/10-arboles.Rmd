@@ -109,7 +109,7 @@ de impureza (por ejemplo, coeficiente de Gini).
 
 #### Ejemplo
 Graficamos la medida de impureza para dos clases:
-```{r, fig.width=5}
+```{r, fig.width=3, fig.height=2}
 impureza <- function(p){
   -(p*log(p) + (1-p)*log(1-p))
 }
@@ -420,7 +420,7 @@ en las predicciones.
 Los árboles pueden requerir ser muy grandes para estimar apropiadamente
 relaciones lineales.
 
-```{r}
+```{r, fig.width =5, fig.height =3}
 x <- runif(200,0,1)
 y <- 2*x + rnorm(200,0,0.1)
 arbol <- rpart(y~x, data=data_frame(x=x, y=y), method = 'anova')
@@ -760,7 +760,7 @@ es más grande que la pérdida en varianza.
 4. Reducir $m$, a grandes rasgos:
   - Aumenta el sesgo del bosque (pues es más restringido el proceso de construcción)
   - Disminuye la correlación entre árboles y aumenta la varianza de cada árbol
-5. Intrementar $m$
+5. Incrementar $m$
   - Disminuye el sesgo del bosque (menos restricción)
   - Aumenta la correlacción entre árobles y disminuye la varianza de cada árbol
 6. Cuando usamos bosques aleatorios para estimar probabilidades de clase, como siempre,
@@ -957,7 +957,7 @@ tab <- table(prop_bosque> 0.5, spam_prueba$spam) %>% prop.table() %>% round(3)
 1-sum(diag(tab))
 ```
 
-### Calibración de probabilidades
+## Calibración de probabilidades
 
 Finalmente, podemos checar la calibración de nuestro bosque:
 
@@ -1050,7 +1050,7 @@ cada una de las clases, y después normalizar las probabilidades obtenidas. Este
 procedimiento se puede iterar.
 
 
-### Intervalos para regresión
+## Intervalos para bosques
 
 Construir intervalos de predicción es considerablemente más complicado que
 construir predicciones puntuales. Cuando esto es necesario, podemos hacer
@@ -1083,25 +1083,25 @@ casas <- casas %>% filter(!(SaleCondition %in% c("Family", "Partial", "Abnormal"
     mutate(TotalBsmtSF = ifelse(BsmtQual == "No basement", 0, TotalBsmtSF)) 
 casas_entrena <- sample_frac(casas, 0.85)
 casas_prueba <- anti_join(casas, casas_entrena) 
-mod_casas <- rfinterval(SalePrice ~ Neighborhood + MSSubClass +
+intervalos_casas <- rfinterval(SalePrice ~ Neighborhood + MSSubClass +
             OverallQual + OverallCond + YearBuilt + GrLivArea +
-            BsmtQual + TotalBsmtSF + GarageQual, 
+            BsmtQual + TotalBsmtSF + GarageQual + Functional, 
        method = "quantreg", 
-       params_ranger = list(mtry = 4, num.trees = 1500), 
+       params_ranger = list(mtry = 5, num.trees = 1500), 
        alpha = 0.05, 
        train_data = casas_entrena, test_data = casas_prueba)
 ```
 
 ```{r}
-intervalos <- mod_casas$quantreg_interval
-preds <- mod_casas$testPred
+intervalos <- intervalos_casas$quantreg_interval
+preds <- intervalos_casas$testPred
 intervalos$SalePrice <- casas_prueba$SalePrice
 intervalos$area <- casas_prueba$GrLivArea
 intervalos$pred <- preds
 ggplot(intervalos, aes(x = pred, ymin = lower, ymax = upper, y = SalePrice)) +
     geom_abline() +
-    geom_point(colour = "red") +
-    geom_linerange(colour = "gray") 
+    geom_linerange(colour = "gray") +
+    geom_point(colour = "red", size = 1, alpha = 0.5)
 ```
 
 ```{r}
@@ -1118,5 +1118,164 @@ Los intervalos tienen cobertura razonablemente cercana a la nominal.
 ```{r}
 ggplot(intervalos, aes(x = area, ymin = lower, ymax = upper, y = SalePrice)) +
     geom_point(colour = "red") +
-    geom_linerange(colour = "gray") 
+    geom_linerange(colour = "gray") + scale_x_log10()
 ```
+
+
+
+
+
+## Importancia de variables 
+
+Usando muestras bootstrap y error OOB, es posible tener mediciones útiles de la
+importancia de una variable en el modelo en un bosque aleatorio (todo esto también
+fue inventado por Breiman).
+
+En primer lugar, consideremos qué significa que una variable sea importante
+desde el punto predictivo en un modelo. Podemos considerar, por ejemplo:
+
+- *Si quitamos una variable, y el error de predicción no se degrada, la variable no es importante*.
+Este no es un muy buen enfoque, porque muchas veces tenemos conjuntos de variables correlacionadas.
+Aún cuando una variable influya en la predicción, si la quitamos, otras 
+variables pueden hacer su trabajo, y el modelo no se degrada mucho. Sin embargo,
+si elimináramos las otras variables, esta variable influiría mucho en la predicción.
+
+- *Si las predicciones cambian mucho cuando una variable cambia, entonces la variable es importante*. 
+Este concepto funciona mejor, al menos desde el punto de vista predictivo, y es
+posible refinarlo. Su defecto es que debemos decidir qué cambios queremos medir. Si el modelo es simple (por ejemplo, lineal), entonces es relativamente fácil usar cambios marginales. Pero en modelos no lineales cambios marginales no necesariamente evalúan 
+correctamente el efecto de la variable sobre las predicciones. La situación
+se complica adicionalmente si hay interacciones con otras variables, lo que
+típicamente sucede en métodos basados en árbles.
+
+La idea de Breiman, que intenta atender estas observaciones, es como sigue:
+
+Consideramos un árbol $T^*_j$ del bosque, con muestra bootstrap ${\mathcal L}^*_i$. Calculamos
+un tipo de error out-of-bag para el árbol, promediando sobre todos los elementos de ${\mathcal L}$ que no están en ${\mathcal L}^*_i$
+
+$$\widehat{Err}_{oob}(T^*_j) = \frac{1}{A_j}\sum_{(x^{(i)}, y^{(i)}) \in {\mathcal L} -{\mathcal L}^*_i} L(y^{(i)}, T^*_j(x^{(i)}))$$
+donde $A_j$ es el tamaño de ${\mathcal L} -{\mathcal L}^*_i$.
+
+Ahora *permutamos* al azar la variable $X_k$ en la muestra OOB ${\mathcal L} -{\mathcal L}^*_i$.
+Describimos esta operación como $x^{(i)} \to x^{(i)}_k$.
+Calculamos el error nuevamente:
+
+$$\widehat{Err}_{k}(T^*_j) = \frac{1}{A_j}\sum_{(x^{(i)}, y^{(i)}) \in {\mathcal L} -{\mathcal L}^*_i} L(y^{(i)}, T^*_j(x_k^{(i)}))$$
+Ahora calculamos la degradación del error out-of-bag debido a la permutación:
+$$ D_k(T_j^*) = \widehat{Err}_{k}(T^*_j) - \widehat{Err}_{oob}(T^*_j) $$
+
+Y promediamos sobre el bosque entero
+$$I_k =\frac{1}{B} \sum_{j=1}^B D_k(T^*_j)$$
+y a esta cantidad le llamamos la **importancia** (basada en permutaciones) de la variable $k$ en el bosque
+aleatorio. Es el decremento promedio de capacidad predictiva cuando "quitamos" la variable
+$X_k$.
+
+
+Nótese que:
+
+- No podemos "quitar" la variable durante el entrenamiento de los árboles, pues entonces otras variables
+pueden hacer su trabajo, subestimando su importancia.
+- No podemos "quitar" la variable al medir el error OOB, pues se necesitan todas las
+variables para poder clasificar con cada árbol (pues cada árbol usa esa variable, o tiene
+probabilidad de usarla).
+- Pero podemos permutar a la hora calcular el error OOB (y no durante el entrenamiento), 
+rompiendo la relación que
+hay entre $X_k$ y la variable respuesta.
+- Aunque podríamos usar esta medida para árboles, no es muy buena idea por el problema
+de "enmascaramiento". Este problema se aminora en los bosques aleatorios pues todas las  variables tienen oportunidad de aportar cortes en ausencia de otras variables.
+
+
+Otra manera de medir importancia para árboles de regresión y clasificación es mediante el decremento de impureza promedio
+sobre el bosque, para cada variable.
+
+- Cada vez que una variable aporta un corte en un árbol, la impureza del árbol
+disminuye.
+- Sumamos, en cada árbol, todos estos decrementos de impureza (cada vez que aparece
+la variable en un corte)
+- Finalmente, promediamos esta medida de importancia dentro de cada árbol sobre
+el bosque completo.
+- Repetimos para cada variable.
+
+Para árboles de clasificación, usualmente se toma la importancia de Gini, que está basada in la impureza de Gini
+en lugar de la entropía. La impureza de Gini está dada por
+$$I_G(p_1, \ldots, p_K) = \sum_{k=1}^K p_k(1-p_k),$$
+que es similar a la impureza de entropía que discutimos en la construcción 
+de árboles:
+$$I_G(p_1, \ldots, p_K) = \sum_{k=1}^K -p_k\log (p_k),$$
+Nótese por ejemplo que ambas toman su valor máximo en $p_k=1/K$ (distribución más
+uniforme posible sobre las clases), y que son iguales a cero cuando $p_k=1$ para
+alguna $k$. 
+
+#### Ejemplo{-}
+En nuestro ejemplo de spam
+```{r, fig.asp=2}
+importancias_tbl <- bosque_spam$variable.importance %>% enframe() %>% 
+    mutate(name = fct_reorder(name, value))
+ggplot(importancias_tbl, aes(x = name, y = value )) + geom_point() +
+    coord_flip() + ylab("Decremento en tasa de correctos")
+```
+
+#### Ejemplo{-}
+En el ejemplo de casas:
+```{r}
+bosque_casas <- ranger(SalePrice ~ Neighborhood + MSSubClass +
+            LotArea + OverallQual + OverallCond + YearBuilt + GrLivArea +
+            BsmtQual + TotalBsmtSF + GarageQual + GarageCars + KitchenQual + 
+            Functional, data = casas_entrena, 
+            mtry = 5, num.trees = 1500, importance = "permutation")
+importancias_casas_tbl <- importance(bosque_casas) %>% enframe() %>% 
+    mutate(name = fct_reorder(name, value)) %>% 
+    mutate(valor_porc = 100 * value / bosque_casas$prediction.error)
+ggplot(importancias_casas_tbl, aes(x = name, y = valor_porc)) + 
+    geom_point() + coord_flip() + ylab("Decremento porcentual en Error")
+```
+
+
+**Observaciones**:
+
+- Este análisis nos da una idea de cómo funciona el bosque construido y cómo depende de variables individuales. 
+- Puede adaptarse a cualquier método de predicción. Un equivalente sería hacerlo con las predicciones de validación cruzada o con datos de validación, en lugar de usar los datos OOB.
+
+Sin embargo, cuando se usa *como método de selección de variables* hay que tener
+algunos cuidados:
+
+- Cuando tenemos conjuntos de variables correlacionadas, estas medidas tienden a diluir su importancia entre ellas.
+- Variables de cardinalidad alta tienden a tener importancias más altas (especialmente cuando se usa la importancia de Gini (impureza)).
+- Algunas variables con importancia alta puede depender de interacciones con otras variables quizá menos importantes.
+
+
+
+---
+
+### Ajustando árboles aleatorios.
+
+- El parámetro más importante de afinar es usualmente $mtry$, el número de variables que se escogen
+al azar en cada nodo.
+- A veces podemos obtener algunas ventajas de afinar el número mínimo de observaciones por
+nodo terminal y/o el número mínimo de observaciones por nodo para considerar hacer cortes adicionales
+- Usualmente corremos tantos árboles como podamos (cientos, miles), o hasta que se
+estabiliza el error. Aumentar más arboles rara vez producen sobreajuste adicional (aunque esto no 
+quiere decir que los bosques aleatorios no puedan sobreajustar!)
+
+### Ventajas y desventajas de bosques aleatorios
+
+Ventajas:
+
+- Entre los métodos estándar, es en general uno de los 
+métodos más competitivos: usualmente tienen tasas muy buenas de error de predicción.
+- Los bosques aleatorios son relativamente fáciles de entrenar (ajustar usualmente 1 o 2 parámetros) y rápidos de ajustar. 
+- Heredan las ventajas de los árboles: no hay necesidad de transformar variables o construir interacciones (pues los árboles pueden descubrirlas en parte), son robustos a valores atípicos en las variables de entrada.
+- Igual que con los árboles, las predicciones de los bosques siempre están en el rango
+de las variables de predicción (no extrapolan)
+
+Desventajas:
+- Pueden ser lentos en la predicción, pues muchas veces 
+requieren evaluar grandes cantidades de árboles.
+- No es tan simple adaptarlos a distintos tipos de problemas (por ejemplo, como
+redes neuronales, que combinando capas podemos construir modelos ad-hoc a problemas
+particulares).
+- La falta de extrapolación puede ser también un defecto (por ejemplo, cuando
+una estructura lineal aproximada es apropiadas).
+
+
+
+
