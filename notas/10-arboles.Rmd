@@ -1,5 +1,25 @@
 # Métodos basados en árboles
 
+Los métodos basados en árboles son de un distinto tipo a redes neuronales y 
+regresión. En redes neuronales y regresión, los modelos que usamos son
+*paramétricos*, en el sentido de que están definidos por un número fijo
+de parámetros (cuyo número lo definimos con la estructura del modelo e hiperparámetros).
+
+Los árboles y métodos derivados (bosques aleatorios, boosting de árboles) son 
+*no-paramétricos*: el número de parámetros que los definen dependen del tamaño y
+forma del conjunto de entrenamiento. Estos métodos tienen menos supuestos acerca
+de la estructura de las funciones de predicción que podemos ajustar, incluyendo
+qué interacciones son útiles para hacer predicciones. 
+
+Otro método no paramétrico que consideramos anteriormente es k-vecinos más
+cercanos. Vimos la deficiencias que métodos locales como este pueden tener en dimensión
+alta. Los métodos basados en árboles, sin embargo, están diseñados para buscar
+subconjuntos chicos de variables con las que se puedan hacer buenas predicciones, 
+y en consecuencia, para muchos problemas usuales, lidian apropiadamente con
+el problema de dimensión alta.
+
+
+
 ## Árboles para regresión y clasificación.
 
 La idea básica de los árboles es buscar puntos
@@ -12,7 +32,8 @@ Buscamos clasificar hogares según su ingreso, usando
 como entradas características de los hogares. Podríamos tener,
 por ejemplo:
 
-```{r}
+```{r, message = FALSE, warning = FALSE}
+library(tidyverse)
 knitr::include_graphics('./figuras/arboles_1.png')
 ```
 
@@ -905,8 +926,14 @@ Que comparamos con el score de brier de prueba:
 score_brier <- function(y, p){
     mean((y - p)^2)
 }
+devianza <- function(y, p){
+    # probabilidades igual a 0 o 1
+    p_1 <- (1 - 1e-10)*p + 1e-10*(1-p)
+    -2 * mean(y * log(p_1) + (1-y) * log(1 - p_1))
+}
 prop_bosque <- probas[,2]
 score_brier(spam_prueba$spam, prop_bosque) 
+devianza(spam_prueba$spam, prop_bosque)
 ```
 
 Para calcular otras medidas OOB, podemos extraer directamente las predicciones OOB:
@@ -938,8 +965,7 @@ Finalmente, podemos checar la calibración de nuestro bosque:
 library(gridExtra)
 calib_tbl <- tibble(prob = prop_bosque, obs = spam_prueba$spam)
 g_1 <- ggplot(calib_tbl, aes(x = prop_bosque, y = obs)) +
-    geom_smooth(method = "loess", span = 0.5, se = FALSE, method.args=list(degree = 1)) + 
-    geom_abline() 
+    geom_smooth() + geom_abline() 
 g_2 <- ggplot(calib_tbl, aes(x=prop_bosque)) + geom_histogram(binwidth = 0.02)
 grid.arrange(g_1, g_2, heights = c(4, 2))
 ```
@@ -954,8 +980,8 @@ Vamos a ver la segunda técnica. En primer lugar, tendremos que separar nuestra
 de muestra de prueba en dos partes: una de calibración, y otra de evaluación:
 
 ```{r}
-set.seed(1241)
-indice_calib <- sample(1:length(prop_bosque), (length(prop_bosque)*0.5) %>% floor)
+set.seed(12441)
+indice_calib <- sample(1:length(prop_bosque), length(prop_bosque)*0.5)
 prop_bosque_calib <- prop_bosque[indice_calib]
 prop_bosque_eval <- prop_bosque[-indice_calib]
 y_calib <- spam_prueba$spam[indice_calib]
@@ -967,11 +993,13 @@ de calibración:
 
 ```{r, fig.width = 4, fig.height = 3}
 library(splines2)
-
 logit <- function(p) log(p / (1- p))
 # base de splines no decrecientes, en logit:
-base_splines <- iSpline(logit(prop_bosque_calib), knots = 0, degree = 2)
-matplot(logit(prop_bosque_calib), base_splines, cex = 0.2)
+mediana <- median(prop_bosque_calib)
+base_splines <- iSpline(prop_bosque_calib, knots = mediana,
+                        Boundary.knots = c(0,1),
+                        degree = 2)
+matplot(prop_bosque_calib, base_splines, cex = 0.2)
 ```
 
 Y hacemos una regresión de $y$ en función de la base de splines
@@ -981,23 +1009,22 @@ probabilidades es:
 ```{r, fig.width =4, fig.height = 3}
 dat_calib <- cbind(y_calib, base_splines)
 # con regresión logística obtendremos probabilidades:
-modelo_calib <- glm(y_calib ~ ., data.frame(dat_calib), family = "binomial")
+modelo_calib <- glm(y_calib ~ +., data.frame(dat_calib), family = "binomial")
 prob_calib <- fitted(modelo_calib)
 qplot(prop_bosque_calib, prob_calib)
 ```
 
 Ahora evaluamos la calibración:
 
-```{r, fig.width =4, fig.height = 3}
-base_splines_eval <- iSpline(logit(prop_bosque_eval), 
-                             knots = 0, degree = 2)
+```{r, fig.width =4, fig.height = 3, message = FALSE, warning = FALSE}
+base_splines_eval <- iSpline(prop_bosque_eval, knots = mediana, 
+                             Boundary.knots = c(0, 1), degree = 2)
 probs_calibradas <- predict(modelo_calib, data.frame(base_splines_eval), 
                             type = "response")
 calib_tbl <- tibble(prob = probs_calibradas, 
                     obs = y_eval)
 g_1 <- ggplot(calib_tbl, aes(x = probs_calibradas, y = obs)) +
-    geom_smooth(method = "loess", span = 0.5, se = FALSE, method.args=list(degree = 1)) + 
-    geom_abline() + geom_rug()
+    geom_smooth() + geom_abline() 
 g_2 <- ggplot(calib_tbl, aes(x = probs_calibradas)) + geom_histogram(binwidth = 0.02)
 grid.arrange(g_1, g_2, heights = c(4, 2))
 ```
@@ -1005,21 +1032,91 @@ grid.arrange(g_1, g_2, heights = c(4, 2))
 El score de Brier y devianza con las probabilidades calibradas es:
 
 ```{r}
-score_brier(probs_calibradas, y_eval)
-devianza <- function(p, y){
-    -2*mean(y*log(p) + (1-y)*log(1 - p))
-}
-devianza(probs_calibradas, y_eval)
+score_brier(y_eval, probs_calibradas)
+devianza(y_eval, probs_calibradas)
 ```
 
 
 **Observaciones**:
 
-1. En las graficas de calibración, puedes también cortar las probabilidades en rangos,
+1. En las graficas de calibración, puedes también cortar las probabilidades en rangos
+(por ejemplo cuantiles),
 y calcular el porcentaje de la clase 1 en cada rango (ver discusión en sección de 
 clasificación y regresión logística), junto con intervalos de confianza.
 2. Una desventaja de esta técnica es que tenemos que separar conjuntos de calibración
 y evaluación.
-3. Para el caso multiclase, se puede intentar el siguiente procedimiento: calibrar
+3. Para el caso multiclase, se puede probar el siguiente procedimiento: calibrar
 cada una de las clases, y después normalizar las probabilidades obtenidas. Este
 procedimiento se puede iterar.
+
+
+### Intervalos para regresión
+
+Construir intervalos de predicción es considerablemente más complicado que
+construir predicciones puntuales. Cuando esto es necesario, podemos hacer
+regresión cuantílica usando bosques.
+
+1. En árboles de regresión usuales, cuando queremos hacer predicciones para $x$, 
+aplicamos cada árbol a $x$, obtenemos los datos del nodo terminal donde cae,
+y calculamos el promedio de esas observaciones.. Esta es una 
+estimación del valor esperado de la respuesta condicional a las covariables.
+2. En árboles de regresión cuantílica, repetimos el mismo proceso, pero 
+en lugar de calcular la media, calculamos el cuantil deseado.
+
+Como en **cualquier método**, es **necesario verificar que los intervalos producidos por estos métodos tienen cobertura apropiada**. 
+
+
+#### Ejemplo:
+
+Consideramos el problema de predicción de precio normal de venta de casas. Los 
+hiperparámetros del modelo pueden ser escogidos previamente mediante validación
+cruzada o una muestra de validación:
+
+```{r, message = FALSE, warning = FALSE}
+devtools::install_github(repo="haozhestat/rfinterval")
+library(rfinterval)
+casas <- read_csv("../datos/houseprices/house-prices.csv")
+set.seed(934)
+casas <- casas %>% filter(!(SaleCondition %in% c("Family", "Partial", "Abnormal"))) %>% 
+    mutate(GarageQual = ifelse(is.na(GarageQual), "No garage", GarageQual)) %>% 
+    mutate(BsmtQual = ifelse(is.na(BsmtQual), "No basement", BsmtQual)) %>% 
+    mutate(TotalBsmtSF = ifelse(BsmtQual == "No basement", 0, TotalBsmtSF)) 
+casas_entrena <- sample_frac(casas, 0.85)
+casas_prueba <- anti_join(casas, casas_entrena) 
+mod_casas <- rfinterval(SalePrice ~ Neighborhood + MSSubClass +
+            OverallQual + OverallCond + YearBuilt + GrLivArea +
+            BsmtQual + TotalBsmtSF + GarageQual, 
+       method = "quantreg", 
+       params_ranger = list(mtry = 4, num.trees = 1500), 
+       alpha = 0.05, 
+       train_data = casas_entrena, test_data = casas_prueba)
+```
+
+```{r}
+intervalos <- mod_casas$quantreg_interval
+preds <- mod_casas$testPred
+intervalos$SalePrice <- casas_prueba$SalePrice
+intervalos$area <- casas_prueba$GrLivArea
+intervalos$pred <- preds
+ggplot(intervalos, aes(x = pred, ymin = lower, ymax = upper, y = SalePrice)) +
+    geom_abline() +
+    geom_point(colour = "red") +
+    geom_linerange(colour = "gray") 
+```
+
+```{r}
+intervalos %>% 
+    summarise(cobertura = mean(SalePrice < upper & SalePrice > lower),
+              cobertura_sup = mean(SalePrice < upper),
+              cobertura_inf = mean(SalePrice > lower)) %>% 
+    mutate_if(is.numeric, ~ round(.x, 3))
+```
+
+Los intervalos tienen cobertura razonablemente cercana a la nominal.
+
+
+```{r}
+ggplot(intervalos, aes(x = area, ymin = lower, ymax = upper, y = SalePrice)) +
+    geom_point(colour = "red") +
+    geom_linerange(colour = "gray") 
+```
