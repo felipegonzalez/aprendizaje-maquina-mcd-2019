@@ -935,13 +935,16 @@ tab <- table(prop_bosque> 0.5, spam_prueba$spam) %>% prop.table() %>% round(3)
 Finalmente, podemos checar la calibración de nuestro bosque:
 
 ```{r, fig.width = 4, fig.height = 3}
+library(gridExtra)
 calib_tbl <- tibble(prob = prop_bosque, obs = spam_prueba$spam)
-ggplot(calib_tbl, aes(x = prop_bosque, y = obs)) +
+g_1 <- ggplot(calib_tbl, aes(x = prop_bosque, y = obs)) +
     geom_smooth(method = "loess", span = 0.5, se = FALSE, method.args=list(degree = 1)) + 
-    geom_abline() + geom_rug()
+    geom_abline() 
+g_2 <- ggplot(calib_tbl, aes(x=prop_bosque)) + geom_histogram()
+grid.arrange(g_1, g_2, heights = c(4, 2))
 ```
 
-y vemos que nuestro modelo no tiene una calibración muy buena: las probabilidades
+y vemos que nuestro modelo no tiene una calibración no muy buena: las probabilidades
 obtenidas del bosque están algo encogidas hacia el centro: son algo "subconfiadas".
 
 - Podemos intentar un bosque con distintos parámetros: específicamente número mínimo de casos por nodo terminal, y distinto número de *mtry*.
@@ -951,8 +954,8 @@ Vamos a ver la segunda técnica. En primer lugar, tendremos que separar nuestra
 de muestra de prueba en dos partes: una de calibración, y otra de evaluación:
 
 ```{r}
-set.seed(23441)
-indice_calib <- sample(1:length(prop_bosque), length(prop_bosque)*0.8)
+set.seed(1241)
+indice_calib <- sample(1:length(prop_bosque), (length(prop_bosque)*0.8) %>% floor)
 prop_bosque_calib <- prop_bosque[indice_calib]
 prop_bosque_eval <- prop_bosque[-indice_calib]
 y_calib <- spam_prueba$spam[indice_calib]
@@ -975,7 +978,7 @@ probabilidades es:
 
 ```{r, fig.width =4, fig.height = 3}
 dat_calib <- cbind(y_calib, base_splines)
-modelo_calib <- lm(y_calib ~  -1+., data.frame(dat_calib))
+modelo_calib <- lm(y_calib ~ ., data.frame(dat_calib))
 prob_calib <- fitted(modelo_calib)
 qplot(prop_bosque_calib, prob_calib)
 ```
@@ -987,9 +990,11 @@ base_splines_eval <- iSpline(prop_bosque_eval, knots = c(1/3, 2/3), degree = 2)
 probs_calibradas <- predict(modelo_calib, data.frame(base_splines_eval))
 calib_tbl <- tibble(prob = probs_calibradas, 
                     obs = y_eval)
-ggplot(calib_tbl, aes(x = probs_calibradas, y = obs)) +
+g_1 <- ggplot(calib_tbl, aes(x = probs_calibradas, y = obs)) +
     geom_smooth(method = "loess", span = 0.5, se = FALSE, method.args=list(degree = 1)) + 
     geom_abline() + geom_rug()
+g_2 <- ggplot(calib_tbl, aes(x = probs_calibradas)) + geom_histogram()
+grid.arrange(g_1, g_2, heights = c(4, 2))
 ```
 
 **Observaciones**:
@@ -997,6 +1002,8 @@ ggplot(calib_tbl, aes(x = probs_calibradas, y = obs)) +
 1. En las graficas de calibración, puedes también cortar las probabilidades en rangos,
 y calcular el porcentaje de la clase 1 en cada rango (ver discusión en sección de 
 clasificación y regresión logística), junto con intervalos de confianza.
-2. Para el caso multiclase, se puede intentar el siguiente procedimiento: calibrar
+2. Una desventaja de esta técnica es que tenemos que separar conjuntos de calibración
+y evaluación.
+3. Para el caso multiclase, se puede intentar el siguiente procedimiento: calibrar
 cada una de las clases, y después normalizar las probabilidades obtenidas. Este
 procedimiento se puede iterar.
