@@ -833,7 +833,9 @@ plot(perfs[[4]], add=TRUE, col='purple', lwd=2)
 Los bosques aleatorios, por su proceso de construcción, tienen aspectos interesantes.
 
 En primer lugar, tenemos la estimación de error de prueba **Out-of-Bag** (OOB), que 
-es una estimación *honesta* del error de predicción basada en el proceso de bagging.
+es una estimación *honesta* del error de predicción basada en el proceso de bagging. Es
+similar a la estimación de **validación cruzada** (leave-one-out), pero aprovechamos
+el proceso para hacer un cálculo más simple y rápido.
 
 Obsérvese en primer lugar, que cuando tomamos muestras con reemplazo para construir
 cada árbol, algunos casos de entrenamiento aparecen más de una vez, y otros 
@@ -906,6 +908,9 @@ $$\hat{Err}_{oob} = \frac{1}{n} \sum_{i=1}^n (y^{(i)} - y_{oob}^{(i)})^2$$
 $$\hat{Err}_{oob} = \frac{1}{n}\sum_{i=1}^n I(y^{(i)} = y_{oob}^{(i)})$$
 
 ```
+
+
+**Observaciones**
 
 - Para cada dato de entrenamiento, hacemos predicciones usando solamente los árboles
 que no consideraron ese dato en su construcción. Estas predicciones son las que evaluamos
@@ -1050,7 +1055,7 @@ cada una de las clases, y después normalizar las probabilidades obtenidas. Este
 procedimiento se puede iterar.
 
 
-## Intervalos para bosques
+## Intervalos y su calibración para bosques
 
 Construir intervalos de predicción es considerablemente más complicado que
 construir predicciones puntuales. Cuando esto es necesario, podemos hacer
@@ -1131,23 +1136,39 @@ Usando muestras bootstrap y error OOB, es posible tener mediciones útiles de la
 importancia de una variable en el modelo en un bosque aleatorio (todo esto también
 fue inventado por Breiman).
 
-En primer lugar, consideremos qué significa que una variable sea importante
-desde el punto predictivo en un modelo. Podemos considerar, por ejemplo:
+En primer lugar, definir qué significa que una variable sea *importante* en
+un determinado problema no es trivial. El primer punto que consideramos es
+que intentaremos medir la importancia desde el punto de vista de un modelo: es decir,
+queremos saber qué tanto "influye" cada variable en las predicciones y su calidad.
 
-- *Si quitamos una variable, y el error de predicción no se degrada, la variable no es importante*.
-Este no es un muy buen enfoque, porque muchas veces tenemos conjuntos de variables correlacionadas.
-Aún cuando una variable influya en la predicción, si la quitamos, otras 
-variables pueden hacer su trabajo, y el modelo no se degrada mucho. Sin embargo,
-si elimináramos las otras variables, esta variable influiría mucho en la predicción.
+Algunos primeros enfoques son (sólo discutiremos los primeros dos aquí):
 
-- *Si las predicciones cambian mucho cuando una variable cambia, entonces la variable es importante*. 
-Este concepto funciona mejor, al menos desde el punto de vista predictivo, y es
-posible refinarlo. Su defecto es que debemos decidir qué cambios queremos medir. Si el modelo es simple (por ejemplo, lineal), entonces es relativamente fácil usar cambios marginales. Pero en modelos no lineales cambios marginales no necesariamente evalúan 
-correctamente el efecto de la variable sobre las predicciones. La situación
-se complica adicionalmente si hay interacciones con otras variables, lo que
-típicamente sucede en métodos basados en árbles.
+- Si quitamos una variable, construimos un nuevo modelo, y el error de predicción se degrada, la variable es importante.
+- Una variable es importante cuando las predicciones del modelo se degradan cuando quitamos información de esta variable, o introducimos ruido en esa variable.
+- Si las predicciones cambian mucho cuando una variable cambia, entonces la variable es importante.
 
-La idea de Breiman, que intenta atender estas observaciones, es como sigue:
+El primer enfoque no se refiere específicamente al modelo dado. Tiene el defecto
+de que una variable puede tener información predictiva, que el modelo utiliza, y sin
+embargo, si quitamos la variable y ajustamos un nuevo modelo, otras variables podrían
+encargarse del trabajo que estaba haciendo en nuestro modelo original: por ejemplo,
+con variables correlacionadas.
+
+Para evaluar un modelo dado, el segundo enfoque es mejor y se puede intentar de varias maneras. Para modelos basados en árboles, por ejemplo, podríamos ver qué pasa con las predicciones, por ejemplo, cuando cada vez que vemos la variable $x$ en un nodo escogemos
+una de las ramas al azar, en lugar de utilizar el valor real de $x$.
+
+Una manera de implementar esto es el siguiente: 
+
+1. Tenemos un conjunto de datos (incluyendo la respuesta) con el que queremos
+evaluar la importancia de la variable $x$.
+2. Ponemos los datos en el árbol, vemos sus predicciones, y evaluamos el error de predicción.
+3. Ahora permutamos al azar la variable $x$ a lo largo de los casos. Ponemos los datos en el árbol, vemos sus predicciones, y evaluamos el error de predicción nuevamente.
+4. El incremento en error de predicción del caso 2 al caso 3 es una medida de la importancia de la variable $x$.
+5. Podemos repetir este proceso con distintas permutaciones para construir intervalos o errores estándar que nos ayude a interpretar la variabilidad producida por las permutaciones seleccionadas.
+
+Veremos ejemplos de este procedimiento más adelante.
+Por el momento, utilizaremos la implementación clásica para bosques
+aleatorios, aprovechando los datos OOB. La idea de Breiman original de
+Breiman es como sigue:
 
 Consideramos un árbol $T^*_j$ del bosque, con muestra bootstrap ${\mathcal L}^*_i$. Calculamos
 un tipo de error out-of-bag para el árbol, promediando sobre todos los elementos de ${\mathcal L}$ que no están en ${\mathcal L}^*_i$
@@ -1170,22 +1191,21 @@ aleatorio. Es el decremento promedio de capacidad predictiva cuando "quitamos" l
 $X_k$.
 
 
-Nótese que:
+**Observaciones**
 
-- No podemos "quitar" la variable durante el entrenamiento de los árboles, pues entonces otras variables
-pueden hacer su trabajo, subestimando su importancia.
+- No podemos "quitar" la variable durante el entrenamiento de los árboles, pues entonces otras variables pueden hacer su trabajo, subestimando su importancia.
 - No podemos "quitar" la variable al medir el error OOB, pues se necesitan todas las
 variables para poder clasificar con cada árbol (pues cada árbol usa esa variable, o tiene
 probabilidad de usarla).
 - Pero podemos permutar a la hora calcular el error OOB (y no durante el entrenamiento), 
 rompiendo la relación que
 hay entre $X_k$ y la variable respuesta.
-- Aunque podríamos usar esta medida para árboles, no es muy buena idea por el problema
-de "enmascaramiento". Este problema se aminora en los bosques aleatorios pues todas las  variables tienen oportunidad de aportar cortes en ausencia de otras variables.
+- Aunque este método lo podemos aplicar para cualquier modelo, la interpretación 
+es más interesante con *ensembles* como bosques aleatorios, pues en cada corte damos
+oportunidad a distintas variables de entrar en el modelo. Para un sólo arbol es menos
+útil, por el problema del "enmascaramiento".
 
-
-Otra manera de medir importancia para árboles de regresión y clasificación es mediante el decremento de impureza promedio
-sobre el bosque, para cada variable.
+Otra manera de medir importancia para árboles de regresión y clasificación es mediante el decremento de impureza promedio sobre el bosque, para cada variable.
 
 - Cada vez que una variable aporta un corte en un árbol, la impureza del árbol
 disminuye.
@@ -1226,7 +1246,7 @@ importancias_casas_tbl <- importance(bosque_casas) %>% enframe() %>%
     mutate(name = fct_reorder(name, value)) %>% 
     mutate(valor_porc = 100 * value / bosque_casas$prediction.error)
 ggplot(importancias_casas_tbl, aes(x = name, y = valor_porc)) + 
-    geom_point() + coord_flip() + ylab("Decremento porcentual en Error")
+    geom_point() + coord_flip() + ylab("Incremento % de ECM")
 ```
 
 
@@ -1248,13 +1268,13 @@ algunos cuidados:
 
 ### Ajustando árboles aleatorios.
 
-- El parámetro más importante de afinar es usualmente $mtry$, el número de variables que se escogen
+- El parámetro más importante de afinar es usualmente $m$, el número de variables que se escogen
 al azar en cada nodo.
 - A veces podemos obtener algunas ventajas de afinar el número mínimo de observaciones por
 nodo terminal y/o el número mínimo de observaciones por nodo para considerar hacer cortes adicionales
 - Usualmente corremos tantos árboles como podamos (cientos, miles), o hasta que se
 estabiliza el error. Aumentar más arboles rara vez producen sobreajuste adicional (aunque esto no 
-quiere decir que los bosques aleatorios no puedan sobreajustar!)
+quiere decir que los bosques aleatorios no puedan sobreajustar)
 
 ### Ventajas y desventajas de bosques aleatorios
 
