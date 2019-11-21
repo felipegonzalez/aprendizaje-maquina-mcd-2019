@@ -1276,6 +1276,14 @@ nodo terminal y/o el número mínimo de observaciones por nodo para considerar h
 estabiliza el error. Aumentar más arboles rara vez producen sobreajuste adicional (aunque esto no 
 quiere decir que los bosques aleatorios no puedan sobreajustar)
 
+**Implementaciones**: hay distintas implementaciones con diferencias considerables.
+En nuestros ejemplos usamos el paquete *ranger*. En esta implementación, por ejemplo, las variables cualitativas se toman como ordenadas (alfabético si no es un factor, en el
+orden de los factores o, ordenadas según la variable respuesta si se usa la opción *respect.unordered.factors = TRUE*), ver documentación y referencias asociadas. 
+Se puede usar esta última
+opción y el bosque resultante no necesariamente agrupa niveles de la variable.
+
+
+
 ### Ventajas y desventajas de bosques aleatorios
 
 Ventajas:
