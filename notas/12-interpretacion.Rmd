@@ -1,0 +1,163 @@
+# Interpretación de modelos
+
+```{r, echo=FALSE, message=FALSE, include = FALSE}
+knitr::opts_chunk$set(fig.width=5, fig.asp=0.7) 
+library(ggplot2)
+theme_set(theme_minimal(base_size = 14))
+cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+```
+
+En esta parte discutiremos diversas herramientas que sirven para
+entender más de cómo funcionan y hacen predicciones modelos particulares. La primera
+distinción importante es que nos interesan dos tipos de interpretaciones:
+
+1- **Entendimiento del problema de interés**: queremos *aprender* o encontrar hallazgos que nos ayude a entender cómo funciona el fenómeno que nos interesa (por ejemplo, por qué la gente cancela su cuenta, por qué alguien cae en impago, por qué una casa cuesta lo que cuesta, etc.) Esta es una interpretación al nivel del proceso que genera los datos.
+
+2. **Entendimiento del funcionamiento de un modelo dado**: queremos entender cómo funciona  ¿cuándo es probable que alguien caiga en 
+impago o cancele su cuenta? ¿cuál es el efecto en la predicción del precio de una casa cuando cambia la variable de area habitable? ¿Cómo contribuyen las variables para construir las predicciones?
+
+El primer tipo de aprendizajes es difícil de obtener, y requiere un esfuerzo que
+típicamente va más allá del análisis predictivo. En estos casos, generalmente estamos pensando en intervenciones particulares que buscamos para obtener resultados deseados: por ejemplo, ¿si diseñamos una casa, vale la pena hacer el jardín más grande o más chico? ¿conviene cambiar de contrato a una población con alta probabilidad de cancelar su cuenta? 
+Esta preguntas son típicamente **preguntas causales**, donde quisiéramos saber qué pasa si hacemos manipulaciones particulares en el proceso que genera los datos. El análisis 
+predictivo puede dar respuestas atinadas o no, y muchas veces es difícil juzgar cuándo son atinadas y cuando no antes de hacer la intervención particular que nos interesa. En general, este tipo de preguntas deben ser consideradas desde el punto de vista de inferencia causal, donde generalmente los modelos predictivos juegan un segundo plano.
+
+#### Ejemplo {-}
+Ajustamos un modelo para predecir compras de clientes o usuarios, 
+y descubrimos que una promoción fue particularmente efectiva en el sentido de que
+los usuarios que la recibieron tienen probabilidades altas de hacer compras en cierto
+periodo. Sin embargo, después descubrimos que esa promoción se aplicó solamente cerca de navidad a aquellos usuarios que visitaron nuestra tienda o sitio. Concluimos que es difícil concluir si la promoción es realmente buena: quizá es porque en navidad la gente tiene probabilidad más alta de compra en general dado que hizo una visita a nuestra tienda o sitio.
+
+---
+
+## Interpretación de predicciones
+
+El segundo tipo de interpretación, que tiene qué ver cómo construye predicciones
+particulares un modelo es un problema en general considerablemente más simple, y hay varias herramientas útiles. Veremos:
+
+- Cómo evaluar al contribución de variables individuales a la calidad predictiva de un modelo.
+- Mostrar formas en las que variables individuales afectan las predicciones.
+- Cómo explicar predicciones particulares: ¿por qué una predicción es baja o alta? ¿Cómo cuantificar la contribución de cada variable?
+
+## Importancia de variables
+
+En la sección de bosques aleatorios vimos la idea de importancia basadas en permutaciones.
+Podemos utilizar esta misma idea para cualquier modelo de interés, siguiendo la misma
+idea de Breiman:
+
+- Ajustamos un modelo con un conjunto de entrenamiento y tomamos un conjunto de datos de validación.
+- Para cada variable en el modelo, hacemos:
+ 1. Permutamos la variable en el conjunto de validación
+ 2. Hacemos predicciones con nuestro predictor
+ 3. Evaluamos el error de predicción
+ 4. Obtenemos la diferencia del error de predicción con las variables no permutadas
+- A esta diferencia le llamamos *importancia de la variable* bajo el método de permutaciones.
+
+Podemos repetir el proceso para varias permutaciones (y quizá también muestras bootstrap) para construir rangos de error para nuestra estimación de importancia bajo permutaciones.
+
+### Ejemplo: precios de casas
+
+```{r, message = FALSE}
+library(tidyverse)
+library(ranger)
+casas_tbl <- read_csv("../datos/ames_ejemplo.csv", quoted_na = FALSE) %>% 
+  mutate_if(is.logical, as.numeric) %>% 
+  mutate(aleatoria_num = rnorm(nrow(.), 0, 1)) %>% 
+  mutate(aleatoria_cat = sample(c("a", "b", "c"), nrow(.), replace = TRUE))
+casas_entrena <- sample_frac(casas_tbl, 0.5)
+casas_prueba <- anti_join(casas_tbl, casas_entrena) 
+bosque_casas <- ranger(SalePrice ~ ., data = casas_entrena, 
+            mtry = 3, num.trees = 1500, min.node.size = 2,
+            respect.unordered.factors = TRUE)
+bosque_casas
+```
+
+```{r}
+library(iml)
+x <- casas_prueba[ , bosque_casas$forest$independent.variable.names]
+y <- casas_prueba$SalePrice
+# necesitamos esta función para el paquete iml
+pred_ranger <- function(model, newdata){
+  predict(model, data = newdata)$predictions
+}
+predictor <- Predictor$new(model = bosque_casas, data = x, y = y, 
+  predict.fun = pred_ranger, class = "regression")
+```
+
+Haremos nuestra comparación en la métrica de raíz del error cuadrático medio
+logarítmico:
+
+```{r}
+imp_bosque <- FeatureImp$new(predictor, loss = "rmsle", 
+  compare = "difference", n.repetitions = 20)
+imp_bosque$plot() + geom_vline(xintercept = 0)
+```
+
+**Observacion 1**: La interpretación de importancia es siempre condicional a la forma particular del modelo. Modelos distintos pueden dar importancias muy distintas.
+
+### Ejemplo
+
+Consideramos 
+
+```{r}
+n <- 200
+set.seed(88)
+dat_tbl <- tibble(x_1 = rnorm(n, 0, 1), 
+                  x_2 = sample(c(0, 1), n, replace = T),
+                  x_3 = rnorm(n, 0, 1),
+                  x_4 = rnorm(n, x_1, 0.2)) %>% 
+    mutate(y =  x_1 + 2*x_4 + 2*x_1*x_2 + rnorm(n, 0 , 0.1)) %>% 
+    mutate(tipo = sample(c("entrena", "valida"), n, replace = TRUE))
+valida_tbl <- dat_tbl %>% filter(tipo == "valida")
+importancias <- function(valida_tbl, mod){
+    x <- valida_tbl %>% select(-y, -tipo)
+    predictor_1 <- Predictor$new(model = mod, 
+        data = x, y = valida_tbl$y, 
+        class = "regression")
+    imp <- FeatureImp$new(predictor_1, loss = "rmse", 
+        compare = "difference", n.repetitions = 20)
+    imp
+}
+graficar_imp <- function(imp){
+    imp_tbl <- imp$results# %>% mutate(feature = fct_reorder(feature, importance))
+    ggplot(imp_tbl, aes(x = feature, y = importance)) +
+        geom_point() + coord_flip()
+}
+```
+
+```{r}
+# sin interacción
+mod_1 <- lm(y ~ x_1 + x_2 + x_3 + x_4, dat_tbl %>% filter(tipo == "entrena"))
+imp_1 <- importancias(valida_tbl, mod_1)
+graficar_imp(imp_1)
+```
+
+
+```{r}
+# con interacción
+mod_2 <- lm(y ~ x_1 + x_2 + x_3 + x_4 + x_1*x_2 + x_2*x_3, 
+            dat_tbl %>% filter(tipo == "entrena"))
+imp_2 <- importancias(valida_tbl, mod_2)
+graficar_imp(imp_2)
+```
+
+---
+
+**Observacion 2**: La interpretación de importancia es siempre condicional al total de variables en el modelo. La inclusión o exclusión (o existencia o no de variables disponibles) de variables puede producir importancias muy distintas
+
+
+```{r}
+mod_3 <- lm(y ~ x_1 + x_2 + x_3 + x_1*x_2 + x_1*x_3, 
+            dat_tbl %>% filter(tipo == "entrena"))
+imp_3 <- importancias(valida_tbl, mod_3)
+graficar_imp(imp_3)
+```
+
+
+### Resumen {-}
+
+- La importancia de variables por permutaciones es una descripción del modelo
+particular que estamos considerando. Debemos tener cuidado al interpretar estas
+importancias como importantes para el problema de interés, o de forma causal
+- Esta importancia muestra en qué variables se está apoyando el modelo para
+construir las predicciones. 
+
