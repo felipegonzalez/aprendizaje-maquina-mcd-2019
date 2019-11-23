@@ -436,7 +436,7 @@ sobreajuste producido por el algoritmo agresivo de boosting.
 
 
 ### Tasa de aprendizaje (shrinkage)
-Funciona bien modificar el algoritmo usando una tasa de aprendizae
+Funciona bien modificar el algoritmo usando una tasa de aprendizaje
 $0<\nu<1$:
 $$f_m(x) = f_{m-1}(x) + \eta \sum_j \gamma_{j,m} I(x\in R_{j,m})$$
 
@@ -590,6 +590,13 @@ params = list(
 res <- ajustar_mod(d_entrena, verbose = 1, nrounds = 5000, params = params)
 ```
 
+Finalmente podemos guardar el modelo en un formato estándar (R, python, etc):
+
+```{r}
+modelo <- xgb.train(d_entrena, verbose = 1, nrounds = 5000, params = params)
+xgb.save(model = modelo, fname = "./cache_obj/casas_boost.xgb")
+```
+
 ## Otros parámetros
 
 También es posible usar hiperparámetros adicionales:
@@ -619,7 +626,7 @@ En *xgboost*, consideramos en lugar de esto la pérdida regularizada:
 $$\min_{T} \sum_{i=1}^N L(y^{(i)}, f_{m-1}(x^{(i)}) + T(x^{(i)})) + \Omega(T)$$
 donde 
 $$\Omega(T) = \gamma |T| + \lambda \sum_t w_t ^2$$
-donde las $\w_t$ son los valores de $T$ en cada una de sus nodos terminales. Se usa entonces
+donde las $w_t$ son los valores de $T$ en cada una de sus nodos terminales. Se usa entonces
 una penalización costo-complejidad como en árboles CART (el término de $\gamma$), junto con una penalización L2 sobre las predicciones del nuevo árbol ajustado, donde $T(x^{(i)}) = w_{t(i)}$.
 
 ### Paso de optimización cuadrático {-}
@@ -642,5 +649,4 @@ Para escoger los cortes se seleccionan variables y puntos de corte usando de man
 
 Adicionalmente, *xgboost* y implementaciones modernas de boosting están diseñadas para ser
 escaladas a datos más grandes. Esto incluye paralelismo, manejo eficiente de memoria, posibilidad
-de usar GPUs para el entrenamiento, y aproximaciones eficientes para encontrar los cortes para cada estructura [@xgboost].
-de árbol.
+de usar GPUs para el entrenamiento, y aproximaciones eficientes para encontrar los cortes para cada estructura [@xgboost] de árbol.
