@@ -358,7 +358,12 @@ la devianza (como la formulamos arriba, con $y\in\{-1,1\}$) con la pérdida expo
 
 ### Ejemplo: precios de casas {-}
 
+```{r, message = FALSE, warning = FALSE}
+if(!("xgboost" %in% installed.packages()[, "Package"]))  install.packages("xgboost")
+```
+
 ```{r, message = FALSE}
+library(xgboost)
 # usamos datos preprocesados
 entrena_casas_tbl <- read_csv("../datos/ames_ejemplo.csv", quoted_na = FALSE)
 y_entrena <- log(1 + entrena_casas_tbl$SalePrice)
@@ -371,10 +376,7 @@ d_entrena <- xgb.DMatrix(data = x_entrena, label= y_entrena)
 Usaremos el paquete *xgboost* que usa la librería [xgboost](https://xgboost.readthedocs.io/en/latest/),
 la pérdida cuadrática en logaritmo (*nota*: el algoritmo es un poco diferente que la descripción de arriba, lo cual discutimos más adelante):
 
-```{r, message = FALSE, warning = FALSE}
-if(!("xgboost" %in% installed.packages()[, "Package"]))  install.packages("xgboost")
-library(xgboost)
-```
+
 
 Fijaremos el número de árboles en 100, de profundidad 5, y estimamos el error con
 validación cruzada:
