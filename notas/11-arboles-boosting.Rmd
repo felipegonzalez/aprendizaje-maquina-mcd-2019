@@ -250,7 +250,7 @@ que a su vez se puede escribir como (demostrar):
 $$L(y,z) = 2\log(1+e^{-yz})$$
 Ahora consideremos cómo se ve nuestro problema de optimización:
 
-$$T = argmin_{T} 2\sum_{i=1}^N \log (1+ e^{-y^{(i)}(f_{m-1}(x^{(i)}) + T(x^{(i)})})$$
+$$T = argmin_{T} 2\sum_{i=1}^N \log (1+ e^{-y^{(i)}(f_{m-1}(x^{(i)}) + T(x^{(i)}))})$$
 
 Nótese que sólo optimizamos con respecto a $T$, así que
 podemos escribir
@@ -358,4 +358,230 @@ ver más en nuestro libro de texto, o en [@ESL].
 la conexión con los modelos logísticos e interpretación de probabilidad que tenemos
 cuando usamos la devianza. Sin embargo, son similares: compara cómo se ve
 la devianza (como la formulamos arriba, con $y\in\{-1,1\}$) con la pérdida exponencial.
+
+
+### Ejemplo: precios de casas {-}
+
+```{r, message = FALSE}
+# usamos datos preprocesados
+entrena_casas_tbl <- read_csv("../datos/ames_ejemplo.csv", quoted_na = FALSE)
+y_entrena <- log(1 + entrena_casas_tbl$SalePrice)
+# convertir a codificación dummy
+x_entrena <- model.matrix(~ ., data = entrena_casas_tbl %>% select(-SalePrice))
+# convertir a clase apropiada para xgboost
+d_entrena <- xgb.DMatrix(data = x_entrena, label= y_entrena)
+```
+
+Usaremos el paquete *xgboost* que usa la librería [xgboost](https://xgboost.readthedocs.io/en/latest/),
+la pérdida cuadrática en logaritmo (*nota*: el algoritmo es un poco diferente que la descripción de arriba, lo cual discutimos más adelante):
+
+```{r, message = FALSE, warning = FALSE}
+if(!("xgboost" %in% installed.packages()[, "Package"]))  install.packages("xgboost")
+library(xgboost)
+```
+
+Fijaremos el número de árboles en 100, de profundidad 5, y estimamos el error con
+validación cruzada:
+
+
+
+```{r}
+params = list(
+    objective = "reg:linear",
+    eta = 0.5, # tamaño de paso
+    max_depth = 4, # profundidad de árboles
+    lambda = 0)
+set.seed(812) # para validación cruzada
+mod_boost_cv <- xgb.cv(params = params, 
+                     data = d_entrena,
+                     nfold = 10, 
+                     nrounds = 50, # número de árboles
+                     predictions = TRUE, 
+                     print_every_n = 20)
+```
+
+```{r}
+transformar_eval <- function(mod_boost_cv){
+    eval_tbl <- mod_boost_cv$evaluation_log %>% 
+        gather(variable, valor, -iter) %>% 
+        separate(variable, into = c("tipo", "metrica", "res")) %>% 
+        spread(res, valor)
+    eval_tbl
+}
+graficar_vc <- function(eval_tbl){
+    error_entrena <- eval_tbl %>% filter(tipo == "train") %>% pull(mean) %>% last
+    error_val <- eval_tbl %>% filter(tipo == "test") %>% pull(mean) %>% last
+    sd_error_val <- eval_tbl %>% filter(tipo == "test") %>% pull(std) %>% last
+    sprintf("Error entrena: %.2f, Error valida: %.2f, se valida: %.2f", 
+            error_entrena, error_val, sd_error_val) %>% print
+    ggplot(eval_tbl, aes(x = iter, y = mean, ymin = mean - std, ymax = mean + std,
+                     colour = tipo)) +
+        scale_y_log10(breaks = c(0.1, 0.2, 0.4, 0.8, 1.6, 3.2)) +
+        geom_point() + geom_linerange()
+}
+mod_boost_cv %>% transformar_eval() %>% graficar_vc()
+```
+
+
+En este ejemplo, el modelo sobreajusta rápidamente. Mostraremos ahora cómo controlar
+el proceso de optimización para obtener buen desempeño predictivo.
+
+## Afinación para Gradient Boosting
+
+Hay algunas adiciones al algoritmo de gradient boosting que podemos
+usar para mejorar el desempeño, además del número de árboles
+y su profundidad. Los dos métodos que comunmente se
+usan son encogimiento (*shrinkage*), que es una especie de tasa de 
+aprendizaje, y submuestreo, donde construimos cada árbol adicional 
+usando una submuestra de la muestra de entrenamiento.
+
+Ambas podemos verlas como técnicas de regularización, que limitan
+sobreajuste producido por el algoritmo agresivo de boosting.
+
+
+### Tasa de aprendizaje (shrinkage)
+Funciona bien modificar el algoritmo usando una tasa de aprendizae
+$0<\nu<1$:
+$$f_m(x) = f_{m-1}(x) + \eta \sum_j \gamma_{j,m} I(x\in R_{j,m})$$
+
+Este parámetro sirve como una manera de evitar sobreajuste rápido cuando
+construimos los predictores. Si este número es muy alto, podemos sobreajustar
+rápidamente con pocos árboles, y terminar con predictor de varianza alta. Si este
+número es muy bajo, puede ser que necesitemos demasiadas iteraciones para llegar
+a buen desempeño.
+
+Igualmente se prueba con varios valores de $0<\eta<1$ (típicamente $\eta<0.1$)
+para mejorar el desempeño en validación. **Nota**: cuando hacemos $\eta$ más chica, es necesario hacer $M$ más grande (correr más árboles) para obtener desempeño 
+óptimo.
+
+Veamos que efecto tiene en nuestro ejemplo:
+
+```{r}
+params = list(
+    objective = "reg:linear",
+    eta = 0.05, # tamaño de paso
+    max_depth = 4, # profundidad de árboles
+    lambda = 0)
+set.seed(812) # para validación cruzada
+mod_boost_cv <- xgb.cv(params = params, 
+                     data = d_entrena,
+                     nfold = 10, 
+                     nrounds = 400, # número de árboles
+                     predictions = TRUE, 
+                     print_every_n = 20)
+```
+
+
+Obsérvese que podemos obtener un mejor resultado de validación afinando
+la tasa de aprendizaje. Cuando es muy grande, el modelo rápidamente sobreajusta
+cuando agregamos árboles. Si la tasa es demasiado chica, podemos tardar
+mucho en llegar a un predictor de buen desempeño.
+
+### Submuestreo 
+Funciona bien construir cada uno de los árboles con submuestras de la muestra
+de entrenamiento, como una manera adicional de reducir varianza al construir
+nuestro predictor (esta idea es parecida a la de los bosques aleatorios, 
+aquí igualmente perturbamos la muestra de entrenamiento en cada paso para evitar
+sobreajuste). Adicionalmente, este proceso acelera considerablemente las
+iteraciones de boosting, y en algunos casos sin penalización en desempeño.
+
+En boosting generalmente se toman submuestras (una
+fracción de alrededor de 0.5 de la muestra de entrenamiento, pero puede
+ser más chica para conjuntos grandes de entrenamiento) sin reemplazo.
+
+Este parámetro también puede ser afinado con muestra
+de validación o validación cruzada. 
+
+```{r}
+params = list(
+    objective = "reg:linear",
+    eta = 0.05, # tamaño de paso
+    max_depth = 4, # profundidad de árboles
+    subsample = 0.5,
+    lambda = 0)
+ajustar_mod <- function(d_entrena, verbose = 0, nrounds = 400, params){
+    dput(params)
+    mod_boost_cv <- xgb.cv(params = params, 
+                     data = d_entrena,
+                     nfold = 10, 
+                     nrounds = nrounds, # número de árboles
+                     predictions = TRUE, 
+                     print_every_n = 40, 
+                     nthreads = 2, # modificar según recursos
+                     verbose = verbose)
+    eval_tbl <- mod_boost_cv$evaluation_log %>% 
+        gather(variable, valor, -iter) %>% 
+        separate(variable, into = c("tipo", "metrica", "res")) %>% 
+        spread(res, valor)
+    print(tail(eval_tbl, 2))
+    eval_tbl
+}
+res <- ajustar_mod(d_entrena, verbose = 1, params = params)
+```
+
+En este ejemplo, podemos reducir el tiempo de ajuste usando una 
+fracción de submuestro de 0.5, con quizá algunas mejoras en desempeño.
+
+Ahora veamos los dos parámetros actuando en conjunto:
+
+```{r}
+df_params <- list(objective = "reg:linear", eta = c(0.1,  0.25, 0.5),
+                  subsample = c(0.1,  0.5, 1.0), 
+                  maxdepth = 4, lambda = 0) %>% cross_df
+df_params <- df_params %>% 
+    mutate(eval_log = pmap(df_params, ~ ajustar_mod(d_entrena, nrounds = 150, params = list(...))))
+df_params_u <- df_params %>% unnest()
+```
+
+```{r}
+g_1 <- ggplot(df_params_u %>% filter(iter > 10), aes(x = iter, y = mean, colour = tipo)) + 
+     facet_grid(eta~subsample, labeller = labeller(.rows = label_both, .cols = label_both)) + 
+     geom_line() + scale_y_log10() 
+g_1
+```
+
+Nótese que: 
+
+- Valores altos de $\eta$ junto con valores muy chicos de subsample producen que
+el optimizador no funcione bien.
+- Valores altos de $\eta$ pueden producir modelos con  más sobreajuste.
+- Valores bajos de $\eta$ requieren más iteraciones para reducir el error.
+
+
+### Tamaño de árboles
+
+Los árboles se construyen de tamaño fijo $J$, donde $J$ es el número
+de cortes. Usualmente $J=1,2,\ldots, 10$, y es un parámetro que hay que
+elegir. $J$ más grande permite interacciones de orden más alto entre 
+las variables de entrada. Probamos ahora 
+
+```{r, cache = FALSE}
+df_params <- list(objective = "reg:linear", 
+                  eta = c(0.01, 0.05,  0.1, 0.2),
+                  subsample = c(0.5, 0.9), 
+                  maxdepth = c(2, 4, 8),
+                  lambda = c(1, 10, 100)) %>% cross_df
+set.seed(883)
+df_params <- df_params %>%
+    sample_n(20) %>% # búsqueda aleatoria
+    mutate(eval_log = pmap(df_params, 
+        ~ ajustar_mod(d_entrena, nrounds = 1000, params = list(...))))
+df_params_u <- df_params %>% unnest() %>% 
+    filter(iter == 1000, tipo == "test") %>% 
+    arrange(mean)
+df_params_u
+
+```
+
+```{r}
+params = list(
+    objective = "reg:linear",
+    eta = 0.01, # tamaño de paso
+    max_depth = 3, # profundidad de árboles
+    subsample = 0.5, lambda = 1)
+res <- ajustar_mod(d_entrena, verbose = 1, nrounds = 3000, params = params)
+```
+
+
+## Algoritmo xgboost
 
