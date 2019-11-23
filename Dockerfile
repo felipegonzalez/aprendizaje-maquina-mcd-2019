@@ -57,4 +57,9 @@ RUN install2.r --error \
     ggrepel \
     tsne \
     feather \
-    gifski
+    gifski \
+
+RUN install2.r --error \
+    RcppRoll \
+    xgboost \
+    iml
