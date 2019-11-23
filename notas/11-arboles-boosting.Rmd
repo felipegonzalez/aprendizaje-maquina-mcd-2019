@@ -2,10 +2,7 @@
 
 ```{r, echo=FALSE, message=FALSE, include = FALSE}
 knitr::opts_chunk$set(fig.width=5, fig.asp=0.7) 
-if(!("xgboost" %in% rownames(installed.packages()))){
-  install.packages("xgboost")
-}
-library(ggplot2)
+library(tidyverse)
 theme_set(theme_minimal(base_size = 14))
 cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 ```
@@ -122,7 +119,6 @@ Podemos hacer FSAM directamente sobre un problema de regresión.
 ```{r, message=FALSE, warning=FALSE}
 set.seed(227818)
 library(rpart)
-library(tidyverse)
 x <- rnorm(200, 0, 30)
 y <- 2*ifelse(x < 0, 0, sqrt(x)) + rnorm(200, 0, 0.5)
 dat <- data.frame(x=x, y=y)
@@ -478,6 +474,7 @@ cuando agregamos árboles. Si la tasa es demasiado chica, podemos tardar
 mucho en llegar a un predictor de buen desempeño.
 
 ### Submuestreo 
+
 Funciona bien construir cada uno de los árboles con submuestras de la muestra
 de entrenamiento, como una manera adicional de reducir varianza al construir
 nuestro predictor (esta idea es parecida a la de los bosques aleatorios, 
@@ -492,7 +489,7 @@ ser más chica para conjuntos grandes de entrenamiento) sin reemplazo.
 Este parámetro también puede ser afinado con muestra
 de validación o validación cruzada. 
 
-```{r}
+```{r, }
 params = list(
     objective = "reg:linear",
     eta = 0.05, # tamaño de paso
@@ -500,20 +497,20 @@ params = list(
     subsample = 0.5,
     lambda = 0)
 ajustar_mod <- function(d_entrena, verbose = 0, nrounds = 400, params){
-    dput(params)
+    #dput(params)
     mod_boost_cv <- xgb.cv(params = params, 
                      data = d_entrena,
                      nfold = 10, 
                      nrounds = nrounds, # número de árboles
                      predictions = TRUE, 
                      print_every_n = 40, 
-                     nthreads = 2, # modificar según recursos
+                     nthread = 4, # modificar según recursos
                      verbose = verbose)
     eval_tbl <- mod_boost_cv$evaluation_log %>% 
         gather(variable, valor, -iter) %>% 
         separate(variable, into = c("tipo", "metrica", "res")) %>% 
         spread(res, valor)
-    print(tail(eval_tbl, 2))
+    #print(str(tail(eval_tbl, 2)))
     eval_tbl
 }
 res <- ajustar_mod(d_entrena, verbose = 1, params = params)
@@ -555,33 +552,95 @@ de cortes. Usualmente $J=1,2,\ldots, 10$, y es un parámetro que hay que
 elegir. $J$ más grande permite interacciones de orden más alto entre 
 las variables de entrada. Probamos ahora 
 
-```{r, cache = FALSE}
-df_params <- list(objective = "reg:linear", 
+```{r, cache = TRUE}
+grid_tbl <- list(objective = "reg:linear", 
                   eta = c(0.01, 0.05,  0.1, 0.2),
                   subsample = c(0.5, 0.9), 
                   maxdepth = c(2, 4, 8),
                   lambda = c(1, 10, 100)) %>% cross_df
 set.seed(883)
-df_params <- df_params %>%
-    sample_n(20) %>% # búsqueda aleatoria
-    mutate(eval_log = pmap(df_params, 
-        ~ ajustar_mod(d_entrena, nrounds = 1000, params = list(...))))
-df_params_u <- df_params %>% unnest() %>% 
-    filter(iter == 1000, tipo == "test") %>% 
+# hacemos búsqueda aleatoria (haz size más grande)
+subgrid_tbl <- sample_n(grid_tbl, size = 15) # busqueda aleatoria
+eval_log <- pmap(subgrid_tbl, ~ ajustar_mod(d_entrena, 
+                                           nrounds = 2000, params = list(...)))
+subgrid_tbl <- subgrid_tbl %>% mutate(eval_log = eval_log)
+eval_tbl <- subgrid_tbl %>% unnest() %>% 
+    filter(iter == 2000, tipo == "test") %>% 
     arrange(mean)
-df_params_u
-
+eval_tbl
 ```
+
+**Observación**: muchas veces es necesario correr más iteraciones de las
+que en primera instancia planeas, especialmente cuando el valor de $\eta$ es chico. En estas
+primeras corridas no necesariamente es bueno descartar combinaciones de
+parámetros con $\eta$ relativamente chica y que son prometedores. Experimentar
+con el número de iteraciones es buena idea, pues muchas veces el predictor mejora
+considerablemente
+
+
+Usando esta información podemos seleccionar un juego de parámetros y
+correr más iteraciones. Después de algunos experimentos adicionales, obtenemos:
 
 ```{r}
 params = list(
     objective = "reg:linear",
     eta = 0.01, # tamaño de paso
-    max_depth = 3, # profundidad de árboles
-    subsample = 0.5, lambda = 1)
-res <- ajustar_mod(d_entrena, verbose = 1, nrounds = 3000, params = params)
+    max_depth = 4, # profundidad de árboles
+    subsample = 0.5, lambda = 5)
+res <- ajustar_mod(d_entrena, verbose = 1, nrounds = 5000, params = params)
 ```
 
+## Otros parámetros
+
+También es posible usar hiperparámetros adicionales:
+
+- Seleccionar variables al azar para construir cada árbol o seleccionar variables al azar por nodo 
+(como en bosques aleatorios)
+- Número mínimo de casos por nodo
 
 ## Algoritmo xgboost
 
+El algoritmo [xgboost](https://www.kdd.org/kdd2016/papers/files/rfp0697-chenAemb.pdf) tiene
+optimizaciones e ideas adicionales para mejorar desempeño, y 
+[su implementación estándar](https://xgboost.readthedocs.io/en/latest/) es una libraría
+robusta.
+
+Aquí discutiremos algunas diferencias del algoritmo original de gradient boosting y esta
+implementación. 
+
+### Regularización por complejidad y L2 {-}
+
+En el algoritmo FSAM, buscábamos minimizar (encontrando un árbol que agregamos al predictor
+de la iteración anterior):
+
+$$\min_{T} \sum_{i=1}^N L(y^{(i)}, f_{m-1}(x^{(i)}) + T(x^{(i)}))$$
+En *xgboost*, consideramos en lugar de esto la pérdida regularizada:
+
+$$\min_{T} \sum_{i=1}^N L(y^{(i)}, f_{m-1}(x^{(i)}) + T(x^{(i)})) + \Omega(T)$$
+donde 
+$$\Omega(T) = \gamma |T| + \lambda \sum_t w_t ^2$$
+donde las $\w_t$ son los valores de $T$ en cada una de sus nodos terminales. Se usa entonces
+una penalización costo-complejidad como en árboles CART (el término de $\gamma$), junto con una penalización L2 sobre las predicciones del nuevo árbol ajustado, donde $T(x^{(i)}) = w_{t(i)}$.
+
+### Paso de optimización cuadrático {-}
+
+En *xgboost*, en lugar de usar solo el gradiente para hacer cada paso, se utiliza una aproximación
+de segundo orden a la función de pérdida y se optimiza analíticamente:
+
+$$L(y^{(i)}, f_{m-1}(x^{(i)}) + T(x^{(i)}))\approx L(y^{(i)}, f_{m-1}(x^{(i)})) + 
+g_iT(x^{(i)}) + \frac{1}{2}h_i (T(x^{(i)}))^2$$
+
+donde $g_i$ es el gradiente y $h_i$ es la segunda derivada de la función de pérdida. El primer término
+del lado derecho de esta ecuación es constante, y dada una estructura de árbol dada, es posible
+encontrar analíticamente los pesos $T(x^{(i)})$ que minimizan el lado derecho de esta ecuación. Este
+enfoque parece mejorar la velocidad y calidad de los predictores resultantes.
+Para escoger los cortes se seleccionan variables y puntos de corte usando de manera miope con este criterio
+[@xgboost].
+
+
+### Otras optimizaciones de xgboost {-}
+
+Adicionalmente, *xgboost* y implementaciones modernas de boosting están diseñadas para ser
+escaladas a datos más grandes. Esto incluye paralelismo, manejo eficiente de memoria, posibilidad
+de usar GPUs para el entrenamiento, y aproximaciones eficientes para encontrar los cortes para cada estructura [@xgboost].
+de árbol.
