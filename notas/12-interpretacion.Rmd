@@ -161,3 +161,41 @@ importancias como importantes para el problema de interés, o de forma causal
 - Esta importancia muestra en qué variables se está apoyando el modelo para
 construir las predicciones. 
 
+
+## Gráficas de dependencia parcial
+
+Ahora buscamos contestar la pregunta: ¿qué pasa con las predicciones de
+nuestro modelo cuando una variable cambia de valor? Esta es una pregunta
+que busca mostrar el efecto marginal de una variable.
+
+Supongamos entonces que tenemos un predictor $f(x_1,x_2)$ que depende de dos variables de
+entrada. Podemos considerar la función
+$${f}_{1}(x_1) = E_{x_2}[f(x_1,x_2)],$$
+que es el promedio de $f(x)$ fijando $x_1$ sobre la marginal de $x_2$. Si tenemos
+una muestra de entrenamiento, podríamos estimarla promediando sobre la muestra 
+de entrenamiento.
+
+$$\bar{f}_1(x_1) = \frac{1}{n}\sum_{i=1}^n f(x_1, x_2^{(i)}),$$
+que consiste en fijar el valor de $x_1$ y promediar sobre todos los valores
+de la muestra de entrenamiento para $x_2$. Ahora podemos graficar $x_1$
+contra $\bar{f}_1(x_1)$ para entender el efecto marginal de esta variable.
+
+
+#### Ejemplo {-}
+
+Nótese que en el caso de un modelo lineal $f(x)=a+b_1x_1+b_2x_2+b_3x_3$, 
+$\bar{f}_1(x_1)$ es una función lineal: $\bar{f}_1(x_1) = c + b_1x_1$. Cuando
+hay interacciones $f(x)=a+b_1x_1+b_2x_2 + b_3x_3 + b_4x_1x_2$ entonces
+$\bar{f}_1(x_1) = c + dx_1$, donde $d= b_1 + b_3\frac{1}{m}\sum_i x_2$. 
+
+Cuando hay interacciones considerables, es mejor calcular las funciones de
+dependencia parcial usando pares de variables. En este ejemplo obtendríamos
+por ejemplo 
+$$\bar{f}_{1,2}(x_1, x_2) = c + b_1x_1+b_2x_2 + b_4x_1x_2$$
+
+### Ejemplo {-}
+
+```{r}
+
+```
+
