@@ -52,18 +52,20 @@ idea de Breiman:
  4. Obtenemos la diferencia del error de predicción con las variables no permutadas
 - A esta diferencia le llamamos *importancia de la variable* bajo el método de permutaciones.
 
-Podemos repetir el proceso para varias permutaciones (y quizá también muestras bootstrap) para construir rangos de error para nuestra estimación de importancia bajo permutaciones.
+Podemos repetir el proceso para varias permutaciones y promediar los resultados. También
+es posible producir rangos de error usando bootstrap, por ejemplo.
 
 ### Ejemplo: precios de casas
 
 ```{r, message = FALSE}
 library(tidyverse)
 library(ranger)
+set.seed(1812)
 casas_tbl <- read_csv("../datos/ames_ejemplo.csv", quoted_na = FALSE) %>% 
   mutate_if(is.logical, as.numeric) %>% 
   mutate(aleatoria_num = rnorm(nrow(.), 0, 1)) %>% 
   mutate(aleatoria_cat = sample(c("a", "b", "c"), nrow(.), replace = TRUE))
-casas_entrena <- sample_frac(casas_tbl, 0.5)
+casas_entrena <- sample_frac(casas_tbl, 0.75)
 casas_prueba <- anti_join(casas_tbl, casas_entrena) 
 bosque_casas <- ranger(SalePrice ~ ., data = casas_entrena, 
             mtry = 3, num.trees = 1500, min.node.size = 2,
@@ -71,7 +73,7 @@ bosque_casas <- ranger(SalePrice ~ ., data = casas_entrena,
 bosque_casas
 ```
 
-```{r}
+```{r, message = FALSE}
 library(iml)
 x <- casas_prueba[ , bosque_casas$forest$independent.variable.names]
 y <- casas_prueba$SalePrice
@@ -86,10 +88,14 @@ predictor <- Predictor$new(model = bosque_casas, data = x, y = y,
 Haremos nuestra comparación en la métrica de raíz del error cuadrático medio
 logarítmico:
 
-```{r}
+```{r, fig.width =6, fig.height= 9}
 imp_bosque <- FeatureImp$new(predictor, loss = "rmsle", 
   compare = "difference", n.repetitions = 20)
-imp_bosque$plot() + geom_vline(xintercept = 0)
+importancias <- imp_bosque$results %>% 
+    mutate(feature = fct_reorder(feature, importance))
+ggplot(importancias, aes(x = feature, y = importance)) +
+    geom_hline(yintercept = 0, colour = "salmon") +
+    geom_point() + coord_flip()
 ```
 
 **Observacion 1**: La interpretación de importancia es siempre condicional a la forma particular del modelo. Modelos distintos pueden dar importancias muy distintas.
@@ -181,21 +187,128 @@ de la muestra de entrenamiento para $x_2$. Ahora podemos graficar $x_1$
 contra $\bar{f}_1(x_1)$ para entender el efecto marginal de esta variable.
 
 
-#### Ejemplo {-}
-
-Nótese que en el caso de un modelo lineal $f(x)=a+b_1x_1+b_2x_2+b_3x_3$, 
-$\bar{f}_1(x_1)$ es una función lineal: $\bar{f}_1(x_1) = c + b_1x_1$. Cuando
-hay interacciones $f(x)=a+b_1x_1+b_2x_2 + b_3x_3 + b_4x_1x_2$ entonces
-$\bar{f}_1(x_1) = c + dx_1$, donde $d= b_1 + b_3\frac{1}{m}\sum_i x_2$. 
-
-Cuando hay interacciones considerables, es mejor calcular las funciones de
-dependencia parcial usando pares de variables. En este ejemplo obtendríamos
-por ejemplo 
-$$\bar{f}_{1,2}(x_1, x_2) = c + b_1x_1+b_2x_2 + b_4x_1x_2$$
-
 ### Ejemplo {-}
 
 ```{r}
 
 ```
 
+
+
+
+### Discusión {-}
+
+En primer lugar, veamos qué obtenemos de la dependencia parcial
+cuando aplicamos al modelo lineal sin interacciones. En el caso de dos variables,
+
+$$f_1(x_1) = E_{x_2}[f(x_1,x_2)] =E_{x_2}[a + bx_1 + cx_2)] = \mu + bx_1,$$
+que es equivalente al análisis marginal que hacemos en regresión lineal (
+incrementos en la variable $x_1$ con todo lo demás fijo, donde el incremento
+marginal de la respuesta es el coeficiente $b$). 
+
+Desde este punto de vista, dependencia parcial da una interpretación similar
+a la del análisis usual de coeficientes en regresión lineal, donde pensamos
+en "todo lo demás constante".
+
+Igualmente, si el modelo fuera aditivo de la forma 
+$f(x_1,x_2) = h_1(x_1) + h_2(x_2)$
+obtendríamos
+$$f_1(x_1) = E_{x_2}[h_1(x_1) + h_2(x_2)] = \mu + h_1(x_1),$$
+y recuperaríamos otra vez la interpetación de "todo lo demás constante".
+
+---
+
+
+En general, si nuestro predictor depende de más variables 
+$f(x_1,x_2, \ldots, x_p)$ 
+entrada. Podemos considerar las funciones
+$${f}_{j}(x_j) = E_{(x_1,x_2, \ldots x_p) - x_j}[f(x_1,x_2, \ldots, x_p)],$$
+que es el valor esperado de $f(x)$ fijando $x_j$, y promediando sobre el resto
+de las variables. Si tenemos
+una muestra de entrenamiento, podríamos estimarla promediando sobre la muestra 
+de entrenamiento
+
+$$\bar{f}_j(x_j) = \frac{1}{n}\sum_{i=1}^n f(x_1^{(i)}, x_2^{(i)}, \ldots, x_{j-1}^{(i)},\, x_j,\,  x_{j+1}^{(i)},\ldots, x_p^{(i)}).$$
+
+Podemos hacer también  gráficas de dependencia parcial para más de una variable,
+si fijamos un subconjunto de variables y promediamos sobre el resto.
+
+---
+
+
+#### Más de interpretación {-}
+
+Es importante evitar la interpretación incorrecta de que la función
+de dependencia parcial da el valor esperado del predictor condicionado a valores
+de la variable cuya dependencia examinamos. Es decir, 
+$$f_1(x_1) = E_{x_2}(f(x_1,x_2)) \neq E(f(x_1,x_2)|x_1).$$
+La última cantidad es un valor esperado diferente (calculado sobre la
+condicional de $x_2$ dada $x_1$), de manera que utiliza información acerca
+de la relación que hay entre $x_1$ y $x_2$, y se puede interpretar
+como el valor esperado del predictor ingorando $x_2$. 
+La función de dependencia parcial
+da el efecto de $x_1$ tomando en cuenta los efectos *promedio* de las otras variables.
+
+#### Ejemplos {-}
+
+Considramos $f(x_1,x_2) = h_1(x_1)h_2(x_2) = x_1x_2$, donde  $x_1$ y $x_2$ tienen medias $a_1$ y $a_2$.
+La función de dependiencia parcial de $x_1$ es (demuéstralo):
+$\bar{f}_1(x_1) = a_2 x_1,$
+que nos muestra el efecto de $x_1$ promediando sobre $x_2$.
+Sin embargo, la condicional de la predicción dada $x_1$ es diferente:
+$$f_1(x_1) = E(x_1x_2 | x_1) = x_1 E(x_2 | x_1)$$
+y el valor esperado condicional puede ser una función complicada. Por ejemplo,
+si hay correlación lineal entre $x_1$ y $x_2$ podríamos tener
+$E(x_2 | x_1) = ax_1 + b$, etc. Esta cantidad tiene sus usos (por ejemplo,
+hacer predicciones cuando no tenemos $x_2$), pero para entender el
+efecto univariado de $x_1$ generalmente es más fácil considerar la 
+función de dependiencia parcial.
+
+---
+
+Finalmente, nótese que cuando hay **interacciones** fuertes entre las variables, ningún análisis marginal (dependencia parcial o examen de coeficientes) da un resultado tan fácilmente interpretabl. La única solución es considerar el efecto conjunto de las variables que interactúan. De modo que este tipo de análisis funciona mejor
+cuando no hay interacciones grandes entre las variables (es cercano a un modelo
+aditivo con efectos no lineales).
+
+
+#### Ejemplo: regresión lineal {-}
+
+¿Qué esperamos si aplicamos a un modelo de regresión lineal?
+
+```{r}
+library(pdp)
+mod_lm <- lm(log(1 + SalePrice) ~ 1 + nbhoods + log(Gr_Liv_Area) +
+                 Overall_Qual + I(Overall_Qual^2) +
+                 Overall_Qual:log(Gr_Liv_Area), casas_entrena)
+#mod_lm
+mod_lm %>%
+    partial(pred.var = c("Gr_Liv_Area")) %>%
+    ggplot(aes(x = Gr_Liv_Area)) +
+    geom_line(aes(y = exp(yhat) - 1)) +
+    geom_rug(data = casas_entrena, sides = "b")
+mod_lm %>%
+    partial(pred.var = c("Gr_Liv_Area", "Overall_Qual")) %>% 
+    ggplot(aes(x = Gr_Liv_Area, colour = Overall_Qual,
+               group = Overall_Qual)) +
+    geom_line(aes(y = exp(yhat) - 1)) +
+    geom_rug(data = casas_entrena, aes(y = 0),
+             sides = "b", position = "jitter", alpha = 1)
+```
+
+```{r}
+bosque_casas %>%
+    partial(pred.var = c("Gr_Liv_Area")) %>%
+    ggplot(aes(x = Gr_Liv_Area)) +
+    geom_line(aes(y = yhat)) +
+    geom_rug(data = casas_entrena, sides = "b")
+```
+
+```{r}
+bosque_casas %>%
+    partial(pred.var = c("Gr_Liv_Area", "Overall_Qual")) %>%
+    ggplot(aes(x = Gr_Liv_Area, colour = Overall_Qual,
+               group = Overall_Qual)) +
+    geom_line(aes(y = yhat)) +
+    geom_rug(data = casas_entrena,
+             aes(x = Gr_Liv_Area), sides = "b")
+```
