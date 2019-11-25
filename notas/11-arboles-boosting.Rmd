@@ -334,12 +334,13 @@ $\frac{\partial L}{\partial z} = -ye^{-yf(x)}$.
 
 ### Discusión: adaboost (opcional)
 
+En adaboost usamos la pérdida exponencial. 
 Adaboost es uno de los algoritmos originales para boosting, y no es necesario
 usar gradient boosting para aplicarlo. La razón es que  los árboles de clasificación
 $T(x)$ toman valores $T(x)\in \{-1,1\}$, y el paso de optimización
 \@ref(eq:fsam-paso) de cada árbol queda
 
-$$T = argmin_{T} \sum_{i=1}^N e^{-y^{(i)}f_{m-1}(x^{(i)})} e^{-y^{(i)}T(x^{(i)})}
+$$T = {argmin}_{T} \sum_{i=1}^N e^{-y^{(i)}f_{m-1}(x^{(i)})} e^{-y^{(i)}T(x^{(i)})}
 $$
 $$T = argmin_{T} \sum_{i=1}^N d_{m,i} e^{-y^{(i)}T(x^{(i)})}
 $$
@@ -378,7 +379,7 @@ la pérdida cuadrática en logaritmo (*nota*: el algoritmo es un poco diferente 
 
 
 
-Fijaremos el número de árboles en 100, de profundidad 5, y estimamos el error con
+Fijaremos el número de árboles en 50, de profundidad 4, y estimamos el error con
 validación cruzada:
 
 
