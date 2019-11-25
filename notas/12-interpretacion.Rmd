@@ -8,18 +8,27 @@ cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2"
 ```
 
 En esta parte discutiremos diversas herramientas que sirven para
-entender más de cómo funcionan y hacen predicciones modelos particulares. La primera
+entender cómo funcionan y hacen predicciones modelos particulares. La primera
 distinción importante es que nos interesan dos tipos de interpretaciones:
 
-1- **Entendimiento del problema de interés**: queremos *aprender* o encontrar hallazgos que nos ayude a entender cómo funciona el fenómeno que nos interesa (por ejemplo, por qué la gente cancela su cuenta, por qué alguien cae en impago, por qué una casa cuesta lo que cuesta, etc.) Esta es una interpretación al nivel del proceso que genera los datos.
+1- **Entendimiento del problema de interés**: queremos aprender o encontrar hallazgos que nos ayuden a entender cómo funciona el fenómeno que nos interesa (por ejemplo, por qué la gente cancela su cuenta, por qué alguien cae en impago, por qué una casa cuesta lo que cuesta, etc.) Esta es una interpretación al nivel del proceso que genera los datos.
 
-2. **Entendimiento del funcionamiento de un modelo dado**: queremos entender cómo funciona  ¿cuándo es probable que alguien caiga en 
+En este punto, incluso los modelos más simples frecuentemente no son interpretables.
+
+
+2: **Entendimiento del funcionamiento de una familia de modelos**: en este caso, quisiéramos entender cómo se comportan distintas estructuras predictivas para una familia de modelos dada y un problema dado. Esto incluye inclusión o exclusión de variables, ingeniería de entradas, búsquedas de estructuras parsimoniosas.
+
+2. **Entendimiento del funcionamiento de un modelo dado**: queremos entender cómo funciona un modelo ajustado:  ¿cuándo es probable que alguien caiga en 
 impago o cancele su cuenta? ¿cuál es el efecto en la predicción del precio de una casa cuando cambia la variable de area habitable? ¿Cómo contribuyen las variables para construir las predicciones?
+
 
 El primer tipo de aprendizajes es difícil de obtener, y requiere un esfuerzo que
 típicamente va más allá del análisis predictivo. En estos casos, generalmente estamos pensando en intervenciones particulares que buscamos para obtener resultados deseados: por ejemplo, ¿si diseñamos una casa, vale la pena hacer el jardín más grande o más chico? ¿conviene cambiar de contrato a una población con alta probabilidad de cancelar su cuenta? 
 Esta preguntas son típicamente **preguntas causales**, donde quisiéramos saber qué pasa si hacemos manipulaciones particulares en el proceso que genera los datos. El análisis 
-predictivo puede dar respuestas atinadas o no, y muchas veces es difícil juzgar cuándo son atinadas y cuando no antes de hacer la intervención particular que nos interesa. En general, este tipo de preguntas deben ser consideradas desde el punto de vista de inferencia causal, donde generalmente los modelos predictivos juegan un segundo plano.
+predictivo puede dar respuestas atinadas o no, y muchas veces es difícil juzgar cuándo son atinadas, y cuando no, antes de hacer la intervención particular que nos interesa. En general, este tipo de preguntas deben ser consideradas desde el punto de vista de inferencia causal, cuyas consideraciones van más allá del análisis predictivo.
+
+
+
 
 #### Ejemplo {-}
 Ajustamos un modelo para predecir compras de clientes o usuarios, 
@@ -29,10 +38,19 @@ periodo. Sin embargo, después descubrimos que esa promoción se aplicó solamen
 
 ---
 
+En el segundo tipo de interpretación buscamos entender la *estructura predictiva*
+de un problema dada una familia posible de modelos. Este problema se puede aproximar
+mediante ideas estadísticas, y buscamos contestar, por ejemplo: ¿cómo podemos describir la variación de los modelos respecto a la muestra de entrenamiento? Este enfoque es especialmente útil cuando utilizamos modelos que pretenden reflejar el proceso generador de los datos, de modo que usualmente pensamos que tenemos la "familia de modelos correcta", o algo muy cercano.
+
+
 ## Interpretación de predicciones
 
-El segundo tipo de interpretación, que tiene qué ver cómo construye predicciones
-particulares un modelo es un problema en general considerablemente más simple, y hay varias herramientas útiles. Veremos:
+El tercer tipo de interpretación, que tiene qué ver cómo construye predicciones
+particulares un modelo es un problema en general considerablemente más simple. Este problema tiene relevancia cuando las predicciones son insumo de una de una decisión, y quisiéramos saber cómo influyen las variables individuales en la predicción para dar
+transparencia a la decisión (por ejemplo, ¿por qué rechazaron mi crédito? ¿Por qué un 
+transacción es marcada como posible fraude?).
+
+Existen varias herramientas útiles para atacar este problema. Veremos:
 
 - Cómo evaluar al contribución de variables individuales a la calidad predictiva de un modelo.
 - Mostrar formas en las que variables individuales afectan las predicciones.
@@ -46,10 +64,10 @@ idea de Breiman:
 
 - Ajustamos un modelo con un conjunto de entrenamiento y tomamos un conjunto de datos de validación.
 - Para cada variable en el modelo, hacemos:
- 1. Permutamos la variable en el conjunto de validación
- 2. Hacemos predicciones con nuestro predictor
- 3. Evaluamos el error de predicción
- 4. Obtenemos la diferencia del error de predicción con las variables no permutadas
+    1. Permutamos la variable en el conjunto de validación
+    2. Hacemos predicciones con nuestro predictor
+    3. Evaluamos el error de predicción
+    4. Obtenemos la diferencia del error de predicción con las variables no permutadas
 - A esta diferencia le llamamos *importancia de la variable* bajo el método de permutaciones.
 
 Podemos repetir el proceso para varias permutaciones y promediar los resultados. También
@@ -97,6 +115,27 @@ ggplot(importancias, aes(x = feature, y = importance)) +
     geom_hline(yintercept = 0, colour = "salmon") +
     geom_point() + coord_flip()
 ```
+
+```{r, fig.width =6, fig.height= 9}
+replica_boot <- function(datos, bosque, respuesta){
+    datos_boot <- sample_n(datos, nrow(datos), replace = T)
+    x <- datos_boot[ , bosque$forest$independent.variable.names]
+    y <- datos_boot  %>% pull(!!enquo(respuesta))
+    predictor <- Predictor$new(model = bosque, data = x, y = y, 
+            predict.fun = pred_ranger, class = "regression")
+    imp_bosque <- FeatureImp$new(predictor, loss = "rmsle", 
+        compare = "difference", n.repetitions = 5)
+    importancias <- imp_bosque$results 
+    importancias
+}
+
+reps <- map(1:5, ~ replica_boot(casas_prueba, bosque_casas, SalePrice)) %>% bind_rows()
+reps <- reps %>% mutate(feature = fct_reorder(feature, importance, mean))
+ggplot(reps, aes(x = feature, y = importance)) +
+    geom_hline(yintercept = 0, colour = "salmon") +
+    geom_point() + coord_flip()
+```
+
 
 **Observacion 1**: La interpretación de importancia es siempre condicional a la forma particular del modelo. Modelos distintos pueden dar importancias muy distintas.
 
@@ -311,4 +350,84 @@ bosque_casas %>%
     geom_line(aes(y = yhat)) +
     geom_rug(data = casas_entrena,
              aes(x = Gr_Liv_Area), sides = "b")
+```
+
+
+
+## Explicación de predicciones
+
+Una tarea común que se puede requerir para transparentar las predicciones
+
+Consideremos una predictor $f(X)$, y hacemos una predicción $f(x)$
+para un caso $x = (x_1,x_2,\ldots, x_p)$
+particular. ¿Cómo contribuye cada variable a la predicción f(x)? 
+
+Definimos en primer lugar la predicción que haríamos si solamente conocemos
+un subconjunto $W$ de las variables $X_1,\ldots, X_p$. Este valor es
+
+$$f_W(x) = E[f | X_i = x_i, i\in W]$$
+
+y definimos $f_\emptyset (x)$ como la constante igual a $E(f)$ (la predicción promedio).
+Podemos definir entonces 
+
+$$\Delta_W (x) = f_W(x) - f_\emptyset (x)$$
+como la *contribución del subconjunto de variables en $W$ a la predicción $f(x)$.
+
+### Ejemplo {-}
+Para un modelo lineal sin interacciones, se puede confirmar sin dificultad que
+$$\Delta_W (x) = \sum_{i\in W} \beta_i(x_i - \mu_i)$$ 
+para cualquier $x$. Nótese que si definimos $\phi_i(x) = \beta_i (x_i - \mu_i),$
+entonces podemos calcular fácilmente 
+
+### Ejemplo {-}
+Ahora consideramos un modelo lineal con interacciones, por ejemplo
+$$f(x_1, x_2) = \beta_0 + \beta_1 x_1 + \beta_2 x_2 + \beta_3 x_1 x_2,$$
+¿Cómo se ven las contribuciones $\Delta_W$? Tenemos que
+$$\Delta_{1}(x) = \beta_1x_1   - \beta_3x_1E(X_1X_2) $$
+y vemos que la contribución de $x_1$ depende
+
+
+Una manera de abordar este problema consiste en pensar qué propiedades
+deseables deberían
+cumplir las contribuciones $\phi_i(x)$ de cada variable $x_i$, desde el punto
+de vista de su interpretación. 
+
+1. La suma de las contribuciones individuales $\phi_i(x)$ satisface
+$$\sum_i \phi_i(x) = f(x) - E(f(X)),$$
+es decir, la suma de las contribuciones es la diferencia entre la predicción $f(x)$ y la predicción promedio $E(f(X))$.
+
+2. 
+
+
+Una primera manera de abordar esto es considerar las contribuciones
+$$\phi_i(x) = f(x_1,\ldots, x_p)  - E(f(x_1, \ldots, X_i, \ldots, x_p)).$$
+Esta última cantidad es la diferencia entre la predicción menos el valor esperado
+de la predicción promediando sobre la variable $X_i$. Esta cantidad, sin
+
+
+
+
+## Valores de Shapley
+
+Supongamos que tenemos un modelo aditivo sin interacciones 
+$$f(X_1,X_2,\ldots, X_p) = \beta_0 +h_1(X_1) +\cdots h(X_p)$$ 
+
+Si hacemos una predicción particular para $x = (x_1,x_2,\ldots, x_p)$, podemos
+considerar el valor 
+
+$$\phi_i (x) = \beta_ix_i - \beta_i \mu_i,$$
+donde $\mu_i$ es la media de la variable $X_i$. Esta puede pensarse
+como una medida de la contribución de $x_i$ a la predicción respecto a su valor esperado,
+y estos valores cumplen
+$$\sum_i \phi_i (x) = f(x) - f(\mu),$$
+donde $\mu = (\mu_i, \ldots, \mu_p)$. Es decir las *contribuciones* $\phi_i$ explican
+la diferencia de la predicción $f(x_i)$ en relación a la predicción en los valores
+esperados.
+
+
+
+
+```{r}
+shapley = Shapley$new(predictor, x.interest = x[21,])
+shapley$plot()
 ```
