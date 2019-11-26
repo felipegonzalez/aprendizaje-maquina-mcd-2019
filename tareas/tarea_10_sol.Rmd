@@ -1,0 +1,227 @@
+---
+title: "Tarea: Árboles y bosques aleatorios"
+output: html_notebook
+---
+
+```{r,  message = FALSE, warning = FALSE}
+library(tidyverse)
+library(ranger)
+library(rpart)
+library(rpart.plot)
+```
+
+Cosideramos los datos de la tarea 6:
+
+```{r, message=FALSE, warning = FALSE}
+docs_tbl <- read_csv("../datos/sentiment/matriz_tarea_6.csv")
+polaridad <- read_csv("../datos/sentiment/polaridad_tarea_6.csv")
+names(docs_tbl) <- paste0("w", names(docs_tbl)) %>% 
+    make.names
+docs_tbl <- mutate(docs_tbl, polaridad = pull(polaridad))
+set.seed(9921)
+entrena_tbl <- sample_frac(docs_tbl, 0.75)
+val_tbl <- anti_join(docs_tbl, entrena_tbl)
+```
+
+
+## Árboles
+
+Construimos primero un árbol podado:
+
+```{r, fig.width = 10, fig.height = 8}
+arbol_grande <- rpart(polaridad ~ ., method = "class",
+      data = entrena_tbl, cp = 0)
+arbol_podado <- prune(arbol_grande, cp = 0.011)
+prp(arbol_podado, type = 4, extra = 104, 
+    digits=2,  compress = FALSE, cex = 1.2)
+```
+
+
+**Preguntas**
+
+1. ¿Qué significa la información que hay en cada nodo? Examina el primer nodo y cómo
+divide la muestra. ¿Cuáles son los nodos donde el árbol clasifica en nivel E? ¿En cuáles
+clasifica en AB?
+
+2. Evalúa la tasa de clasificación correcta de  entrenamiento y prueba para este árbol. Repite para
+el árbol completo. ¿Cómo detectas que hay sobreajuste en el árbol no podado?
+
+```{r}
+table(predict(arbol_podado, type = "class"), entrena_tbl$polaridad)
+mean(predict(arbol_podado, type = "class") == entrena_tbl$polaridad)
+mean(predict(arbol_podado, newdata = val_tbl, type = "class") == val_tbl$polaridad)
+```
+
+```{r}
+mean(predict(arbol_grande, type = "class") == entrena_tbl$polaridad)
+mean(predict(arbol_grande, newdata = val_tbl, type = "class") == val_tbl$polaridad)
+```
+
+
+3. Poda el árbol para mostrar solamente un árbol con unos 5-7 nodos terminales. ¿Qué variables son usadas? 
+¿Cuál es el error de entrenamiento y prueba?
+
+```{r}
+arbol_chico <- prune(arbol_grande, cp = 0.015)
+prp(arbol_chico, type = 4, extra = 104, 
+    digits=2,  compress = FALSE, cex = 1.2)
+mean(predict(arbol_chico, type = "class") == entrena_tbl$polaridad)
+mean(predict(arbol_chico, newdata = val_tbl, type = "class") == val_tbl$polaridad)
+```
+
+## Bosque aleatorio
+
+Ajustamos un bosque con parámetros cercanos al default (mtry = sqrt(num_variables),
+min.node.size = 10):
+
+```{r}
+bosque_docs <- ranger(polaridad ~ ., data = entrena_tbl,
+       mtry = 50, min.node.size = 5, num.trees = 500,
+       importance = "permutation",
+       probability = TRUE)
+bosque_docs
+```
+
+```{r}
+bosque_docs <- ranger(polaridad ~ ., data = entrena_tbl,
+       mtry = 50, min.node.size = 5, num.trees = 500,
+       importance = "permutation",
+       probability = TRUE)
+bosque_docs
+```
+
+1. ¿Qué significa la salida OOB prediction en la salida de arriba? ¿Con qué muestra se calcula esta medida de  error?
+
+OOB = out-of-bag. Para cada dato de entrenamiento, se encuentran todos los árboles que no utilizaron. Se hace votación por mayoría sobre esos árboles. En este caso, se utiliza el score de brier.
+
+
+2. Calcula la matriz de confusión de prueba para el bosque. Calcula precisión y recall para
+cada una de las clases. Compara el error de clasificación con los árboles de la parte anterior.
+
+
+```{r}
+probs <- predict(bosque_docs, val_tbl)$predictions
+head(probs)
+tab_1 <- table(as.numeric(probs[,2] > 0.5), val_tbl$polaridad)
+tab_1
+mean(as.numeric(probs[,2] > 0.5) == val_tbl$polaridad)
+print("Recall y precisión")
+recall_1 <- tab_1[2,2] / sum(tab_1[,2])
+recall_1
+precision_1 <- tab_1[2,2] / sum(tab_1[2,])
+precision_1
+```
+
+
+3. Afina los parámetros para obtener mejor desempeño, usando el error OOB. Puedes
+usar el siguiente código para hacer una búsqueda aleatoria. Considerando
+esta corrida, adapta el grid para encontrar un mejor error:
+
+```{r}
+# función que ajusta un bosque y devuelve error
+ajusta_bosque <- function(mtry, min.node.size, num.trees, ...){
+    ajuste <- ranger(polaridad ~ ., data = entrena_tbl,
+       mtry = mtry, min.node.size = min.node.size,
+       num.trees = num.trees, probability = TRUE)
+    # reportar error oob, puedes calcular otras cosas aquí
+    ajuste$prediction.error
+}
+grid_params <- list(mtry = seq(1, 300, 2), min.node.size = seq(1, 50, 5), 
+                    num.trees = 500) %>% cross_df()
+random_params <- grid_params %>% sample_n(20)
+resultados_oob <- random_params %>% 
+    mutate(error = pmap_dbl(random_params,  ajusta_bosque))
+resultados_oob
+ggplot(resultados_oob, aes(x = mtry, y = error, colour = min.node.size)) +
+    geom_point() + ylab("Error OOB (Brier score)")
+```
+
+
+**Nota**: 
+
+- Nótese que estamos seleccionando parámetros usando el score de Brier
+out-of-bag, no la tasa de correctos.
+
+Las simulación sugiere entonces probar:
+
+```{r}
+bosque_afinado <- ranger(polaridad ~ ., data = entrena_tbl,
+       mtry = 150, min.node.size = 10, num.trees = 500,
+       probability = TRUE)
+bosque_afinado
+```
+
+
+Comparamos el score de Brier de prueba de los dos bosques:
+
+```{r}
+probs_1 <- predict(bosque_docs, data = val_tbl)$predictions[, 2]
+score_1 <- mean( (probs_1 - val_tbl$polaridad)^2)
+probs_2 <- predict(bosque_afinado, data = val_tbl)$predictions[, 2]
+score_2 <- mean( (probs_2 - val_tbl$polaridad)^2)
+print("Primer bosque, score de Brier:")
+score_1
+print("Bosque afinado, score de Brier:")
+score_2
+```
+
+el error estándar se calcula como sigue:
+
+```{r}
+n <- nrow(val_tbl)
+sigma2_1 <- var((probs_2 - val_tbl$polaridad)^2) 
+sigma2_2 <- var((probs_2 - val_tbl$polaridad)^2) 
+ee_1 <- sqrt(sigma2_1 / n)
+ee_2 <- sqrt(sigma2_1 / n)
+print("bosque original:")
+c(score_1 - ee_1, score_1 + ee_1) %>% round(3)
+print("bosque afinado:")
+c(score_2 - ee_2, score_2 + ee_2) %>% round(3)
+```
+
+De forma que hay cierta evidencia de que el bosque afinado
+es mejor que el no afinado, en términos del score de Brier.
+
+Ahora comparamos la tasa de correctos usando punto de corte de 0.5:
+
+```{r}
+correctos_1 <- mean(as.numeric(probs_1 > 0.5) == val_tbl$polaridad)
+ee_1 <- sqrt(correctos_1 * (1-correctos_1) / n)
+correctos_2 <- mean(as.numeric(probs_2 > 0.5) == val_tbl$polaridad)
+ee_2 <- sqrt(correctos_2 * (1-correctos_2) / n)
+
+print("tasa de correctos para bosque original:")
+c(correctos_1 - ee_1, correctos_1 + ee_1) %>% round(3)
+print("tasa de correctos para bosque afinado:")
+c(correctos_2 - ee_1, correctos_2 + ee_2) %>% round(3)
+
+```
+
+Sin embargo, las tasas de correctos de ambos modelos son
+comparables. El modelo afinado es preferible por su score
+de Brier más chico (discriminan mejor las probabilidades), aunque
+también sería necesario checar la calibración de ambos modelos,
+
+
+## Importancia de variables
+
+En las notas puedes ver cómo se define la importancia de variables usando el método de permutaciones. Esta importancia está dada en términos de caída del error de predicción out-of-bag 
+(en este caso el score de Brier) cuando cada variable se permuta al azar y se hacen las predicciones con
+la variable permutada.
+
+**Pregunta**: 
+
+1. ¿por qué no es posible "quitar" la variable una vez que hemos construido el bosque?
+
+```{r}
+imp_tbl <- tibble(importancia = bosque_docs$variable.importance, 
+       variable = names(bosque_docs$variable.importance)) %>% 
+    mutate(variable = fct_reorder(variable, importancia))
+# 20 más importantes
+imp_tbl_top <- imp_tbl %>% top_n(20, importancia)
+ggplot(imp_tbl_top, aes(x = variable, y = importancia)) +
+    coord_flip() + geom_point()
+```
+
+
+**Pregunta**: examina las primeras 40 variables en importancia. ¿Qué palabras positivas y negativas aparecen?
