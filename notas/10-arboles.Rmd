@@ -195,7 +195,9 @@ grande y luego podar al tamaño correcto.
 
 Construímos algunos árboles con los datos de spam:
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
-install.packages("rpart.plot")
+if(!("rpart.plot" %in% rownames(installed.packages()))){
+    install.packages("rpart.plot")
+}
 ```
 
 ```{r, message=FALSE, warning=FALSE}
@@ -1078,7 +1080,9 @@ hiperparámetros del modelo pueden ser escogidos previamente mediante validació
 cruzada o una muestra de validación:
 
 ```{r, message = FALSE, warning = FALSE}
-devtools::install_github(repo="haozhestat/rfinterval")
+if(!("rfinterval" %in% rownames(installed.packages()))){
+    devtools::install_github(repo="haozhestat/rfinterval")
+}
 library(rfinterval)
 casas <- read_csv("../datos/houseprices/house-prices.csv")
 set.seed(934)

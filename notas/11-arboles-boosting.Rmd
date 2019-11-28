@@ -334,12 +334,13 @@ $\frac{\partial L}{\partial z} = -ye^{-yf(x)}$.
 
 ### Discusión: adaboost (opcional)
 
+En adaboost usamos la pérdida exponencial. 
 Adaboost es uno de los algoritmos originales para boosting, y no es necesario
 usar gradient boosting para aplicarlo. La razón es que  los árboles de clasificación
 $T(x)$ toman valores $T(x)\in \{-1,1\}$, y el paso de optimización
 \@ref(eq:fsam-paso) de cada árbol queda
 
-$$T = argmin_{T} \sum_{i=1}^N e^{-y^{(i)}f_{m-1}(x^{(i)})} e^{-y^{(i)}T(x^{(i)})}
+$$T = {argmin}_{T} \sum_{i=1}^N e^{-y^{(i)}f_{m-1}(x^{(i)})} e^{-y^{(i)}T(x^{(i)})}
 $$
 $$T = argmin_{T} \sum_{i=1}^N d_{m,i} e^{-y^{(i)}T(x^{(i)})}
 $$
@@ -378,9 +379,8 @@ la pérdida cuadrática en logaritmo (*nota*: el algoritmo es un poco diferente 
 
 
 
-Fijaremos el número de árboles en 100, de profundidad 5, y estimamos el error con
+Fijaremos el número de árboles en 50, de profundidad 4, y estimamos el error con
 validación cruzada:
-
 
 
 ```{r}
@@ -439,7 +439,7 @@ sobreajuste producido por el algoritmo agresivo de boosting.
 
 ### Tasa de aprendizaje (shrinkage)
 Funciona bien modificar el algoritmo usando una tasa de aprendizaje
-$0<\nu<1$:
+$0<\eta<1$:
 $$f_m(x) = f_{m-1}(x) + \eta \sum_j \gamma_{j,m} I(x\in R_{j,m})$$
 
 Este parámetro sirve como una manera de evitar sobreajuste rápido cuando
@@ -532,12 +532,25 @@ df_params <- df_params %>%
 df_params_u <- df_params %>% unnest()
 ```
 
-```{r}
-g_1 <- ggplot(df_params_u %>% filter(iter > 10), aes(x = iter, y = mean, colour = tipo)) + 
-     facet_grid(eta~subsample, labeller = labeller(.rows = label_both, .cols = label_both)) + 
+```{r, fig.width = 8, fig.height = 6}
+g_1 <- ggplot(df_params_u %>% filter(iter > 10), 
+              aes(x = iter, y = mean, colour = tipo)) + 
+     facet_grid(eta~subsample, 
+        labeller = labeller(.rows = label_both, .cols = label_both)) + 
      geom_line() + scale_y_log10() 
 g_1
 ```
+
+Podemos ver el error de validación cruzada para distinguir mejor qué está
+pasando con este error (nota que el color en esta gráfica es para *subsample*):
+
+```{r}
+ggplot(df_params_u %>% filter(iter > 50, subsample > 0.1, tipo == "test"), 
+       aes(x = iter, y = mean, colour = factor(subsample))) + 
+     facet_wrap(~eta, labeller = labeller(.rows = label_both)) + 
+     geom_line() 
+```
+
 
 Nótese que: 
 
@@ -554,7 +567,7 @@ de cortes. Usualmente $J=1,2,\ldots, 10$, y es un parámetro que hay que
 elegir. $J$ más grande permite interacciones de orden más alto entre 
 las variables de entrada. Probamos ahora 
 
-```{r, cache = TRUE}
+```{r}
 grid_tbl <- list(objective = "reg:linear", 
                   eta = c(0.01, 0.05,  0.1, 0.2),
                   subsample = c(0.5, 0.9), 
@@ -588,14 +601,14 @@ params = list(
     objective = "reg:linear",
     eta = 0.01, # tamaño de paso
     max_depth = 4, # profundidad de árboles
-    subsample = 0.5, lambda = 5)
-res <- ajustar_mod(d_entrena, verbose = 1, nrounds = 5000, params = params)
+    subsample = 0.5, lambda = 10)
+res <- ajustar_mod(d_entrena, verbose = 1, nrounds = 3000, params = params)
 ```
 
 Finalmente podemos guardar el modelo en un formato estándar (R, python, etc):
 
 ```{r}
-modelo <- xgb.train(d_entrena, verbose = 1, nrounds = 5000, params = params)
+modelo <- xgb.train(d_entrena, verbose = 1, nrounds = 3000, params = params)
 xgb.save(model = modelo, fname = "./cache_obj/casas_boost.xgb")
 ```
 
