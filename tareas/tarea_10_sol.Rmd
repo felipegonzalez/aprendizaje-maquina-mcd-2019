@@ -200,7 +200,12 @@ c(correctos_2 - ee_1, correctos_2 + ee_2) %>% round(3)
 Sin embargo, las tasas de correctos de ambos modelos son
 comparables. El modelo afinado es preferible por su score
 de Brier más chico (discriminan mejor las probabilidades), aunque
-también sería necesario checar la calibración de ambos modelos,
+también sería necesario checar la calibración de ambos modelos.
+
+Puedes también correr un bosque con parámetros subóptimos 
+(por ejemplo mtry = 2) para ver cómo se contrastan dos modelos
+que tienen desempeño considerablemente diferente.
+
 
 
 ## Importancia de variables
