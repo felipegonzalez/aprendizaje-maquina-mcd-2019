@@ -396,7 +396,7 @@ Haremos nuestra comparación en la métrica de raíz del error cuadrático medio
 logarítmico. Hacemos varias repeticiones para suavizar la variación que produce el hecho
 de que tomamos permutaciones al azar de las variables:
 
-```{r, fig.width =6, fig.height= 11}
+```{r, fig.width =6, fig.height= 12}
 imp_bosque <- FeatureImp$new(predictor, loss = "rmsle", 
   compare = "difference", n.repetitions = 20)
 importancias <- imp_bosque$results %>% 
@@ -407,16 +407,11 @@ ggplot(importancias, aes(x = feature, y = importance)) +
 ```
 
 
-
-
-
-
-
 Podemos usar muestras bootstrap para repetir varias veces el análisis, y tener rangos de
 error debidos a la variación en la muestra de prueba. Por ejemplo, con 10 repeticiones bootstrap obtenemos
 rangos de variación (la muestra de prueba es de alrededor de 350 casos):
 
-```{r, fig.width =6, fig.height= 11, cache = TRUE}
+```{r, fig.width =6, fig.height= 12, cache = TRUE}
 set.seed(12)
 replica_boot <- function(datos, bosque, respuesta){
     datos_boot <- sample_n(datos, nrow(datos), replace = T)
@@ -525,7 +520,7 @@ grid.arrange(grobs = grafs, ncol = 2)
 - La importancia por permutaciones muestra en qué variables se está apoyando el modelo para obtener su desempeño predictivo.
 - La importancia de variables por permutaciones es una descripción del modelo
 particular que estamos considerando. Debemos tener cuidado al interpretar estas
-importancias como "importantes" para el problema de interés, o de forma causal.
+importancias de forma causal para el problema de interés.
 - Esta técnica se puede aplicar a cualquier predictor usando una muestra de validación o
 prueba. También es posible utilizarla con la muestra de entrenamiento, y las dos
 versiones (entrenamiento y validación) pueden dar información útil.
@@ -777,4 +772,18 @@ graf_caso(data, contrib, 1, pred_base)
 ```{r}
 graf_caso(data, contrib, 1012, pred_base)
 ```
+
+**Discusión**:
+
+- Un valor de contribución que puede ser más apropiado para los valores Shapley es condicionando
+en cada caso a la información que se tiene durante el proceso de adición de variables. Es decir, usamos
+$$v(S) = E_{X_C|X_S}\left [ f(X_S,X_C) \,  | \,X_S = x_s^*\right \].$$
+Esta cantidad es teóricamente más apropiada para hacer predicciones cuando "no tenemos" las variables de $X_C$. Sin embargo, calcular esta cantidad es considerablemente difícil, pues requiere modelar también la conjunta
+de $(X_1,\ldots, X_p)$, lo cuál en general es difícil. Hasta en regresión lineal, incluso sin interacciones, no es
+trivial hacer estos cálculos. Generalmente se utilizan como mostramos arriba. Una desventaja clara del proceso
+como lo mostramos arriba es que puede ser que al hacer estos promedios, usemos partes del modelo con poca información y malas predicciones. Los valores de Shapley pueden ser ruidosos en este caso.
+
+- Los que mostramos arriba son llamados comunmente valores SHAP o explicación aditiva de Shapley. Existen muchas variaciones de la aplicación de valores de Shapley para entender predictores y es un tema de investigación activo.
+
+
 
