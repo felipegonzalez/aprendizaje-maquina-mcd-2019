@@ -1,0 +1,789 @@
+# Interpretación de modelos
+
+```{r, echo=FALSE, message=FALSE, include = FALSE}
+knitr::opts_chunk$set(fig.width=5, fig.asp=0.7) 
+library(ggplot2)
+theme_set(theme_minimal(base_size = 14))
+cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+```
+
+En esta parte discutiremos diversas herramientas que sirven para
+entender cómo funcionan y hacen predicciones modelos particulares. La primera
+distinción importante es el tipo de interpretación que buscamos: 
+
+1. **Entendimiento de causas/mecanismos**: queremos aprender o encontrar hallazgos que nos ayuden a entender cómo funciona el fenómeno que nos interesa (por ejemplo, por qué la gente cancela su cuenta, por qué alguien cae en impago, etc.) Esta es una interpretación al nivel del proceso que genera los datos. Generalmente involucra afirmaciones obtenidos
+de *inferencia causal*: por ejemplo,
+si mostramos un anuncio más a las personas, su probabilidad de compra se incrementa en 10\%. 
+
+Este tipo de aprendizajes
+requiere esfuerzos que van más allá del análisis predictivo, y generalmente son difíciles y/o costosos de obtener. Requieren
+conocimiento e investigación del dominio de interés, en muchos casos se requiere hacer experimentar más allá de lo
+que los datos muestran (lo cual es costoso). 
+
+2. **Entendimiento de la estructura predictiva de un problema**: en este caso, consideramos  nuestro problema
+en función de una familia de modelos: ¿qué pasa cuando quitamos una variable? ¿cómo mejorar con ingeniería de entradas?
+¿qué tipo de familias de modelos funciona mejor? En este punto argumentos estadísticos son útiles, los cuales
+nos permiten cuantificar distintas estructuras de acuerdo a su verosimilitud o probabilidad. Requiere también experimentar
+con distintos tipos de modelos, distintos tipos de entradas, etc.
+
+3. **Entendimiento del funcionamiento de un modelo dado**: queremos entender cómo funciona un modelo ajustado:  ¿Cómo contribuyen las variables para construir las predicciones? ¿En qué variables se apoya el modelo para tener
+predicciones precisas? ¿Cómo podemos atribuir efectos a variables individuales para una predicción dada?
+
+En esta sección nos concentramos en este último tipo de interpretación, que aunque es la más simple
+tiene dificultades considerables incluso para predictores relativamente simples. Este último problema
+es importante en sí:
+
+- Es parte de los primeros dos tipos de entendimiento o interpretación (por ejemplo, ¿cómo funcionan las interacciones en este modelo particular?).
+- Queremos explicar cómo nuestra predicción utiliza las variables de entrada para hacer predicciones 
+(por transparencia, producir confiabilidad,  o como diagnóstico que constrastamos con lo que sabemos del dominio de intéres).
+- Queremos transparentar predicciones particulares, para saber cómo afectan distintas variables una decisión posterior basada en esa predicción (por ejemplo, por qué a alguien se le niega un crédito)
+
+## Interpretación: primeras observaciones
+
+Consideramos entonces el problema de cómo entender un predictor dado que hemos ajustado. Hay varias
+maneras de aproximarnos a este problema:
+
+- ¿Cómo cambia la predicción cuando una variable cambia?
+- ¿Cuál es la contribución de una variable al desempeño predictivo del modelo?
+- Dada una predicción particular, ¿cómo atribuimos contribuciones a la predicción de cada variable?
+
+Usaremos como referencias nuestra referencia [@ESL]. y  el libro [Interpretable Machine Learning](https://christophm.github.io/interpretable-ml-book/index.html). Este último libro todavía está en desarrollo (2019).
+
+## ¿Cómo depende la predicción de las entradas?
+
+### Visualizaciones para algunas variables {-}
+
+Para modelos con relativamente pocas variables, es posible hacer gráficas que muestren el comportamiento
+de las predicciones sobre el espacio completo de entradas. 
+
+#### Ejemplo: Ozono {-}
+
+Consideramos construir un predictor (modelo lineal con interacciones y
+bosque aleatorio) de niveles de Ozono en términos de 
+radiación solar, velocidad del viento y temperatura:
+
+
+```{r, message = FALSE}
+library(tidyverse)
+library(ranger)
+air_tbl <- filter(airquality, !is.na(Ozone) & !is.na(Solar.R)) %>% 
+    mutate(Temp = (Temp - 32)*5/9)
+# usamos extremely randomized trees: igual que bosque aleatorio,
+# pero los puntos de corte finales se escoge al azar para intentar
+# decorrelacionar los árboles aún más:
+mod_bosque_o <- ranger(Ozone ~ Solar.R + Wind + Temp, air_tbl, 
+                       splitrule = "extratrees", num.trees = 1000)
+mod_lineal_o <- lm(Ozone ~ -1 + Solar.R + Wind + Temp +
+                     I(Solar.R^2) + I(Wind^2) + I(Temp^2) + Solar.R:Wind + Wind:Temp +
+                     Solar.R:Temp, air_tbl)
+```
+
+Calculamos ahora una rejilla que cruza las variables. Escogemos rangos
+de las variables dónde ocurren nuestros datos observados (para evitar extrapolaciones
+obvias - por ejemplo podemos usar el rango de las variables observadas) y graficamos:
+
+```{r}
+dat_g <- list(Solar.R = quantile(air_tbl$Solar.R, seq(0, 1, 0.1)), 
+              Temp = quantile(air_tbl$Temp, c(0.1, 0.5, 0.9)),
+              Wind = c(0, 5, 10, 15)) %>% 
+         cross_df()
+dat_g %>% head
+```
+
+Y ahora calculamos predicciones para cada valor conjunto de las variables. Conviene visualizar
+en lugar de usar tablas:
+
+```{r, fig.width = 8, fig.height = 5}
+dat_g$pred_lm <- predict(mod_lineal_o, dat_g)
+dat_g$pred_bosque <- predict(mod_bosque_o, dat_g)$predictions
+cuantiles_solar <- tibble(Solar.R = quantile(air_tbl$Solar.R, seq(0.1, 0.9, 0.1)))
+dat_g <- dat_g %>% gather(modelo, pred, pred_lm:pred_bosque)
+ggplot(dat_g, aes(x = Solar.R)) +
+    geom_line(aes(y = pred, colour = Temp, group=interaction(modelo, Temp))) +
+    facet_grid(modelo ~ Wind, labeller = label_both) + 
+    scale_color_gradient(low="orange", high="black") +
+    geom_rug(data = cuantiles_solar)
+```
+
+
+
+#### Ejemplo: nse {-}
+
+Para modelos con menos de unas 10 variables, también podemos fijar algunas 
+variables en valores que nos interesen, y variar las restantes. En el siguiente
+ejemplo, fijamos localidades urbanas con mas de 100 mil habitantes que cocinan
+con gas en tanque (que es la mayoría):
+
+```{r, message = FALSE, fig.width = 8, fig.height = 5}
+library(splines)
+nse_tbl <- read_csv("../datos/vars_tarea_enigh_2016.csv")
+nse_tbl$ab <- as.numeric(nse_tbl$nse == "AB")
+nse_entrena <- nse_tbl %>% group_by(upm) %>% sample_frac(0.5)
+nse_prueba <- nse_tbl %>% anti_join(nse_entrena)
+mod_lineal <- glm(ab ~ conex_inte + ns(ocupados, df = 3) + num_tvd + factor(educa_jefe) +
+                      combustible + I(num_tvd>0):conex_inte + tam_loc, 
+                family = "binomial", data = nse_entrena)
+mod_bosque <- ranger(ab ~ conex_inte + ocupados + num_tvd + educa_jefe + tam_loc, 
+                     data = nse_entrena, mtry = 2, 
+                     num.trees = 500, min.node.size = 100,
+                     probability = TRUE)
+grid_pred <- list(conex_inte = c("Si", "No"), 
+                  #  casi 98% 4 o menos ocupados
+                  ocupados = seq(0, 4, 1),
+                  # 99% 2 o menos teles digitales
+                  num_tvd = seq(0, 3, 1), 
+                  educa_jefe = c(1, 6, 10), 
+                  # y fijamos las siguientes dos variables:
+                  tam_loc = c("100_mil"), 
+                  combustible = c("gas_tanque")) %>% 
+                  cross_df() 
+grid_pred$prob_glm <- predict(mod_lineal, grid_pred, type = "response")
+grid_pred$prob_bosque <- predict(mod_bosque, grid_pred)$predictions[, 1]
+g_1 <- ggplot(grid_pred, aes(x = ocupados, y = prob_bosque, colour = num_tvd, 
+                             group=factor(num_tvd))) +
+    facet_grid(conex_inte ~educa_jefe, labeller = label_both) + geom_point() +
+    geom_line()+
+    scale_color_gradient(low="orange", high="black" )
+g_2 <- ggplot(grid_pred, aes(x = ocupados, y = prob_glm, colour = num_tvd, 
+                             group=factor(num_tvd))) +
+    facet_grid(conex_inte ~educa_jefe, labeller = label_both) + geom_point() +
+    geom_line() +
+    scale_color_gradient(low="orange", high="black" ) 
+g_1 + ylim(c(0,1)) + labs(subtitle = "Bosque aleatorio") + ylab("Probabilidad AB")
+g_2 + ylim(c(0,1)) + labs(subtitle = "Regresión logística") + ylab("Probabilidad AB")
+```
+
+Nótese que algunas combinaciones tienen muy poca probabilidad de ocurrir (por ejemplo,
+aquellos con 3 teles digitales sin conexión a internet), sin embargo, estas gráficas
+nos dan una idea de cómo cambia la predicción respecto a algunas variables.
+
+## Gráficas de dependencia parcial
+
+Una desventaja de esta técnica ocurre cuando tenemos más de unas cuantas variables
+de entrada. En esos casos, no es tan práctico fijar las variables que no son de interés
+en valores dados, y las [gráficas de dependencia parcial](https://journal.r-project.org/archive/2017/RJ-2017-016/RJ-2017-016.pdf) pueden ser útiles (ver también @ESL). Comenzamos con el caso de dos variables:
+
+Supongamos que tenemos un predictor $f(x_1,x_2)$ que depende de dos variables de
+entrada. Podemos considerar la función
+$${f}_{1}(x_1) = E_{x_2}[f(x_1,x_2)],$$
+que es el promedio de $f(x)$ fijando $x_1$ sobre la marginal de $x_2$. Si tenemos
+una muestra de entrenamiento, podríamos estimarla promediando sobre la muestra 
+de entrenamiento:
+
+$$\bar{f}_1(x_1) = \frac{1}{n}\sum_{i=1}^n f(x_1, x_2^{(i)}),$$
+
+que consiste en fijar el valor de $x_1$ y promediar sobre todos los valores
+de la muestra de entrenamiento para $x_2$. Ahora podemos graficar $x_1$
+contra $\bar{f}_1(x_1)$ para entender el efecto marginal de esta variable.
+
+
+
+**Discusión**.
+
+El equivalente de las gráficas de dependencia parcial en regresión lineal consiste en *considerar
+solamente la parte del modelo que depende de las variables que nos interesan*. Por ejemplo, si
+$$f(x) = \beta_0 + \beta_1 x_1 + \beta_2 x_2  + \beta_3x_1^2 x_3$$
+
+Podemos fijar $x_1$ y promediar sobre la conjunta de $x_2, x_3$, que da la función cuadrática:
+$$f_1(x_1) = \alpha_0 + \alpha_1 x_1 + \alpha_2 x_1^2$$ 
+
+Nótese que esto *no es lo mismo* que la predicción que haríamos condicionado a que $X_1=x_1$, pues
+en ese caso tendríamos
+$$E(f(X)|X_1=x_1) = \beta_0 + \beta_1 x_1 + \beta_2E(X_2|X_1=x_1) + \beta_3 E(X_3|X_1=x_1) x_1^2,$$
+Que puede ser una función muy complicada de $x_1$ si hay relaciones entre $X_1$, $X_2$ y $X_3$. La interpretación que buscamos es la del primer ejemplo.
+
+---
+
+
+### Ejemplo {-}
+
+Comparamos las gráficas de dependiencia parcial de Ozono vs Temperatura para
+los dos predictores que vimos arriba:
+
+```{r, message = FALSE}
+library(pdp)
+pd_temp_lm <- pdp::partial(mod_lineal_o, train = air_tbl,  pred.var = "Temp", plot = FALSE)
+pd_temp_bo <- pdp::partial(mod_bosque_o, train = air_tbl,  pred.var = "Temp", plot = FALSE)
+pd_grafs <- pd_temp_lm %>% rename(mod_lineal = yhat) %>% 
+    left_join(pd_temp_bo %>% rename(bosque = yhat)) %>% 
+    gather(modelo, yhat, mod_lineal:bosque)
+ggplot(pd_grafs, aes(x = Temp, y = yhat, colour = modelo)) +
+    geom_point() + geom_line()  + labs(subtitle = "Dependencia parcial para temperatura")
+```
+
+---
+
+
+En general, si nuestro predictor depende de más variables 
+$f(x_1,x_2, \ldots, x_p)$ 
+entrada. Podemos considerar las funciones
+$${f}_{j}(x_j) = E_{(x_1,x_2, \ldots x_p) - x_j}[f(x_1,x_2, \ldots, x_p)],$$
+que es el valor esperado de $f(x)$ fijando $x_j$, y promediando sobre el resto
+de las variables. Si tenemos
+una muestra de entrenamiento, podríamos estimarla promediando sobre la muestra 
+de entrenamiento
+
+$$\bar{f}_j(x_j) = \frac{1}{n}\sum_{i=1}^n f(x_1^{(i)}, x_2^{(i)}, \ldots, x_{j-1}^{(i)},\, x_j,\,  x_{j+1}^{(i)},\ldots, x_p^{(i)}).$$
+
+Podemos hacer también  gráficas de dependencia parcial para más de una variable,
+si fijamos un subconjunto de variables y promediamos sobre el resto. Si $X_S = (X_{i_1},X_{i_2},\ldots, X_{i_m})$
+es un subconjunto de variables de $(X_1, \ldots, X_p)$ definimos:
+
+$$f_{X_S}(x_s) = \frac{1}{n}\sum_{i=1}^n f(x_s, x_c^{(i)}),$$
+
+que es una función de $m$ variables, donde fijamos los valores de las variables en $x_s$ y promediamos sobre los datos de entrenamiento para las entradas 
+$x_c$ que no están en $x_s$.
+
+**Observaciones**: 
+
+- Nótese que esta marginalización se hace **sin** condicionar
+a que fijamos el valor de $x_1$, es decir: este procedimiento no es 
+la predicción que haríamos si no conociéramos el valor de $x_2$. En este caso tendríamos que condicionar 
+al valor de $x_1$ observado, y calcular promedios con $E(x_2|x_1)$. 
+- Más bien interpretamos esta gráfica como el efecto promedio de $x_1$, una vez que controlamos
+por $x_2$. En la gráfica nos fijamos en los gradientes más que en los niveles.
+- Como veremos más adelante, esta gráfica puede ser engañosa o poco interpretable cuando hay  interacciones fuertes entre las variables fijas y sobre las que promediamos. En general, en presencia de interacciones fuertes el análisis marginal es poco útil
+- Adicionalmente, sustituimos el valor de las variables fijas (x1, por ejemplo), y promediamos sobre el resto, es posible que estemos evaluando puntos que nunca vimos en entrenamiento - es decir, puede ser que extrapolemos fuertemente. Esto puede producir artefactos poco interpretables en los modelos.
+
+
+#### Ejemplo: Ozono {-}
+
+Cada variable adicional multiplica el tiempo de cómputo (pues la función se evalúa en una rejilla).
+Si el cálculo toma mucho tiempo, puedes especificar una rejilla con menos puntos.
+
+```{r}
+pd_temp_lm <- pdp::partial(mod_lineal_o, train = air_tbl,  pred.var = c("Temp", "Wind"), plot = FALSE)
+pd_temp_bo <- pdp::partial(mod_bosque_o, train = air_tbl,  pred.var = c("Temp","Wind"), plot = FALSE)
+pd_grafs <- pd_temp_lm %>% rename(mod_lineal = yhat) %>% 
+    left_join(pd_temp_bo %>% rename(bosque = yhat)) %>% 
+    gather(modelo, yhat, mod_lineal:bosque)
+# seleccionar puntos para evaluar viento, para hacer la gráfica
+# más fácil de entender:
+wind_cortes <- quantile(pd_grafs$Wind, seq(0, 1, 0.1), type = 1)
+pd_grafs <-  pd_grafs %>% filter(Wind %in% wind_cortes)
+ggplot(pd_grafs, aes(x = Temp, y = yhat, colour = Wind, group = Wind)) +
+    geom_line()  + labs(subtitle = "Dependencia parcial para temperatura y viento") +
+    facet_wrap(~modelo)+
+    scale_color_gradient(low="orange", high="black" ) 
+```
+
+**Ojo**: Para evitar sobreinterpretar extrapolaciones en estas gráficas, podemos agregar
+información acerca de la distribución de cada variable, o restringir el rango de las variables
+que usamos en la gráfica.
+
+```{r}
+cuantiles_temp <- tibble(Temp = quantile(air_tbl$Temp, seq(0.1, 0.9, 0.1)))
+ggplot(pd_grafs, aes(x = Temp)) +
+    geom_line(aes(y = yhat, colour = Wind, group = Wind))  + 
+    labs(subtitle = "Dependencia parcial para temperatura y viento") +
+    facet_wrap(~modelo)+
+    scale_color_gradient(low="orange", high="black" ) +
+    geom_rug(data = cuantiles_temp)
+```
+
+
+#### Ejemplo: nse {-}
+
+Podemos usar el paquete *iml* también
+
+```{r}
+library(iml)
+set.seed(812)
+# para hacer más rápidos los cálculos tomamos una muestra
+# ojo: verifica que con distintas semillas obtienes resultados similares
+dat_tbl <- nse_entrena %>% 
+    select(-piso_tierra) %>% 
+    sample_frac(0.2)
+predict_glm <- function(mod, newdata){
+    predict(mod, newdata = newdata, type = "response")
+}
+pred_lineal <- Predictor$new(mod_lineal, data = dat_tbl,
+                     predict.fun = predict_glm)
+fe_nse <- FeatureEffect$new(pred_lineal, 
+                           c("ocupados", "conex_inte"), method = "pdp")
+ggplot(fe_nse$results, aes(x = ocupados, y = .y.hat, colour = conex_inte)) +
+    geom_line() + ylab("Probabilidad AB")
+```
+
+Y para objetos de ranger:
+
+```{r}
+pred_ranger <- function(model, newdata){
+  predict(model, data = newdata)$predictions
+}
+
+predictor <- Predictor$new(
+  model = mod_bosque, 
+  data = dat_tbl, 
+  y = "ab", 
+  class = 1,
+  predict.fun = pred_ranger,
+  type = "prob"
+  )
+
+fe_nse <- FeatureEffect$new(predictor, c("conex_inte", "ocupados"), method = "pdp")  
+plot(fe_nse)
+```
+
+
+#### Ejemplo: interacciones {-}
+
+Mostramos cómo las gráficas de dependencia parcial pueden ser poco interpretables en el caso en que hay una interacción fuerte entre variables fijas y promediadas. En rojo
+mostramos la curva de dependencia parcial:
+
+```{r, fig.width = 6, fig.height = 4}
+dat_ej <- tibble(x1 = rnorm(200, 0, 1), x2 = rbinom(200, 1, 0.5)) %>% 
+    mutate(y = x2 * x1^2 - (1 - x2) * (x1 + x1^2) + rnorm(200, 0, 0.001))
+mod_1 <- lm(y ~ x1 + x2 + I(x1^2) + I(x1^2):x2 + x1:x2, data = dat_ej)
+dp_lm <- pdp::partial(mod_1, train = dat_ej,  pred.var = c("x1"), plot = )
+ggplot(dat_ej, aes(x1)) + geom_point(aes(y = y, colour = x2)) +
+    geom_line(data = dp_lm, aes(y = yhat), colour = "red", size=1.1)
+```
+
+En este caso, interpretar la curva de dependencia parcial es difícil, y necesitaríamos
+hacer dependencia parcial con x1 y x2 simultáneamente.
+
+## Importancia de variables
+
+La importancia basada en permutaciones busca contestar la segunda de nuestras
+preguntas: ¿Cuánto contribuye cada variable al desempeño predictivo del modelo?
+En la sección de bosques aleatorios vimos la idea de importancia basadas en permutaciones.
+Podemos utilizar esta misma idea para cualquier modelo de interés, siguiendo la misma
+idea de Breiman:
+
+- Ajustamos un modelo con un conjunto de entrenamiento y tomamos un conjunto de datos de validación.
+- Para cada variable en el modelo, hacemos:
+    1. Permutamos la variable en el conjunto de validación
+    2. Hacemos predicciones con nuestro predictor
+    3. Evaluamos el error de predicción
+    4. Obtenemos la diferencia del error de predicción con las variables no permutadas
+- A esta diferencia le llamamos *importancia de la variable* bajo el método de permutaciones.
+
+Podemos repetir el proceso para varias permutaciones y promediar los resultados. También
+es posible producir rangos de error usando bootstrap, por ejemplo.
+
+### Ejemplo: precios de casas
+
+```{r, message = FALSE}
+library(tidyverse)
+library(ranger)
+set.seed(1812)
+casas_tbl <- read_csv("../datos/ames_ejemplo.csv", quoted_na = FALSE) %>% 
+  mutate_if(is.logical, as.numeric) %>% 
+  mutate(aleatoria_num = rnorm(nrow(.), 0, 1)) %>% 
+  mutate(aleatoria_cat = sample(c("a", "b", "c"), nrow(.), replace = TRUE))
+casas_entrena <- sample_frac(casas_tbl, 0.75)
+casas_prueba <- anti_join(casas_tbl, casas_entrena) 
+bosque_casas <- ranger(SalePrice ~ ., data = casas_entrena, 
+            mtry = 3, num.trees = 1500, min.node.size = 2,
+            respect.unordered.factors = TRUE)
+bosque_casas
+```
+
+```{r, message = FALSE}
+library(iml)
+x <- casas_prueba[ , bosque_casas$forest$independent.variable.names]
+y <- casas_prueba$SalePrice
+# necesitamos esta función para el paquete iml
+pred_ranger <- function(model, newdata){
+  predict(model, data = newdata)$predictions
+}
+predictor <- Predictor$new(model = bosque_casas, data = x, y = y, 
+  predict.fun = pred_ranger, class = "regression")
+```
+
+Haremos nuestra comparación en la métrica de raíz del error cuadrático medio
+logarítmico. Hacemos varias repeticiones para suavizar la variación que produce el hecho
+de que tomamos permutaciones al azar de las variables:
+
+```{r, fig.width =6, fig.height= 12}
+imp_bosque <- FeatureImp$new(predictor, loss = "rmsle", 
+  compare = "difference", n.repetitions = 20)
+importancias <- imp_bosque$results %>% 
+    mutate(feature = fct_reorder(feature, importance))
+ggplot(importancias, aes(x = feature, y = importance)) +
+    geom_hline(yintercept = 0, colour = "salmon") +
+    geom_point() + coord_flip()
+```
+
+
+Podemos usar muestras bootstrap para repetir varias veces el análisis, y tener rangos de
+error debidos a la variación en la muestra de prueba. Por ejemplo, con 10 repeticiones bootstrap obtenemos
+rangos de variación (la muestra de prueba es de alrededor de 350 casos):
+
+```{r, fig.width =6, fig.height= 12, cache = TRUE}
+set.seed(12)
+replica_boot <- function(datos, bosque, respuesta){
+    datos_boot <- sample_n(datos, nrow(datos), replace = T)
+    x <- datos_boot[ , bosque$forest$independent.variable.names]
+    y <- datos_boot  %>% pull(!!enquo(respuesta))
+    predictor <- Predictor$new(model = bosque, data = x, y = y, 
+            predict.fun = pred_ranger, class = "regression")
+    imp_bosque <- FeatureImp$new(predictor, loss = "rmsle", 
+        compare = "difference", n.repetitions = 5)
+    importancias <- imp_bosque$results 
+    importancias
+}
+
+reps <- map(1:10, ~ replica_boot(casas_prueba, bosque_casas, SalePrice)) %>% bind_rows()
+reps <- reps %>% mutate(feature = fct_reorder(feature, importance, mean))
+ggplot(reps, aes(x = feature, y = importance)) +
+    geom_hline(yintercept = 0, colour = "salmon") +
+    geom_point() + coord_flip() + 
+    geom_boxplot()
+```
+
+
+
+### Más de importancia predictiva
+
+
+La interpretación de importancia es siempre condicional a la muestra de entrenamiento
+y al forma particular del modelo. Distintos hiperparámetros de ajuste, en particular, pueden producir estructuras de importancia
+distintas.
+
+En el siguiente ejemplo probamos qué pasa con inclusión/exclusión de variables,
+o modelando o no la interacción:
+
+### Ejemplo {-}
+
+Consideramos un modelo con 4 entradas. La forma funcional verdadera es lineal,
+con una interacción entre $x1$ y $x2$
+
+```{r}
+n <- 200
+set.seed(88)
+dat_tbl <- tibble(x_1 = rnorm(n, 0, 1), 
+                  x_2 = sample(c(0, 1), n, replace = T),
+                  x_3 = rnorm(n, 0, 1),
+                  x_4 = rnorm(n, x_1, 0.2)) %>% 
+    mutate(y =  x_1 + 2*x_4 + x_3 + 2*x_1*x_2 + rnorm(n, 0 , 0.2)) %>% 
+    mutate(tipo = sample(c("entrena", "valida"), n, replace = TRUE))
+valida_tbl <- dat_tbl %>% filter(tipo == "valida")
+importancias <- function(valida_tbl, mod){
+    x <- valida_tbl %>% select(-y, -tipo)
+    predictor_1 <- Predictor$new(model = mod, 
+        data = x, y = valida_tbl$y, 
+        class = "regression")
+    imp <- FeatureImp$new(predictor_1, loss = "rmse", 
+        compare = "difference", n.repetitions = 20)
+    imp
+}
+graficar_imp <- function(imp){
+    imp_tbl <- imp$results# %>% mutate(feature = fct_reorder(feature, importance))
+    ggplot(imp_tbl, aes(x = feature, y = importance, ymax = importance, ymin= 0)) +
+        geom_point() + geom_linerange() + coord_flip()
+}
+```
+
+```{r}
+# sin interacción
+mod_1 <- lm(y ~ x_1 + x_2 + x_3 + x_4, dat_tbl %>% filter(tipo == "entrena"))
+imp_1 <- importancias(valida_tbl, mod_1)
+g_1 <- graficar_imp(imp_1) + labs(subtitle = "Sin interacciones")
+mod_1 <- lm(y ~ x_1 + x_2 + x_3, dat_tbl %>% filter(tipo == "entrena"))
+imp_1 <- importancias(valida_tbl, mod_1)
+g_0 <- graficar_imp(imp_1) + labs(subtitle = "Sin interacciones/ sin x4")
+```
+
+
+```{r}
+# con interacción
+mod_2 <- lm(y ~ x_1 + x_2 + x_3 + x_4 + x_1*x_2 + x_2*x_3, 
+            dat_tbl %>% filter(tipo == "entrena"))
+imp_2 <- importancias(valida_tbl, mod_2)
+g_2 <- graficar_imp(imp_2) + labs(subtitles = "Con interacciones")
+```
+
+
+**Observacion**: La interpretación de importancia es siempre condicional al total de variables en el modelo. La inclusión o exclusión (o existencia o no de variables disponibles) de variables puede producir importancias muy distintas
+
+
+```{r}
+mod_3 <- lm(y ~ x_1 + x_2 + x_3 + x_1*x_2 + x_2*x_3, 
+            dat_tbl %>% filter(tipo == "entrena"))
+imp_3 <- importancias(valida_tbl, mod_3)
+g_3 <- graficar_imp(imp_3)+ labs(subtitles = "Con interacciones / sin x4")
+```
+
+
+```{r, fig.width = 6, fig.height = 6, message = FALSE}
+library(gridExtra)
+grafs <- list(g_0, g_1, g_3, g_2) %>% map(function(g){ g + ylim(c(-0.5, 5)) })
+grid.arrange(grobs = grafs, ncol = 2)
+```
+
+
+
+### Resumen {-}
+
+- La importancia por permutaciones muestra en qué variables se está apoyando el modelo para obtener su desempeño predictivo.
+- La importancia de variables por permutaciones es una descripción del modelo
+particular que estamos considerando. Debemos tener cuidado al interpretar estas
+importancias de forma causal para el problema de interés.
+- Esta técnica se puede aplicar a cualquier predictor usando una muestra de validación o
+prueba. También es posible utilizarla con la muestra de entrenamiento, y las dos
+versiones (entrenamiento y validación) pueden dar información útil.
+
+
+
+## Explicación de predicciones
+
+Una tarea común que se puede requerir para transparentar las predicciones es distribuir
+contribuciones a la predicción de cada variable. 
+
+Consideremos una predictor $f(X)$, y hacemos una predicción $f(x)$
+para un caso $x = (x_1,x_2,\ldots, x_p)$
+particular. ¿Cómo contribuye cada variable a la predicción f(x)? 
+
+
+Una manera común (ojo: no es la única) de asignar contribuciones si el modelo es lineal y no tiene interacciones
+es la siguiente:
+
+Si $f(X_1,\ldots, X_p) = \beta_0 + \beta_1 X_1 + \cdots + \beta_p X_p$ , y 
+$x^* = (x_1^*^,x_2^*,\ldots, x_p^*)$ es un caso o instancia particular, podemos
+definir la contribución $\phi_j = \phi_j (x^*)$ de la variable $j$ en la predicción como
+
+$$\phi_j  = \beta_j(x_j^* - \mu_j),$$
+donde $\mu_j$ es la media de la variable $x_j$ (por ejemplo en el conjunto de entrenamiento). Podemos
+también definir fácilmente la contribución de un subconjunto $W$ de variables dada, como
+$$\phi_W (x) = \sum_{j\in W} \beta_j(x_j^* - \mu_j)$$. 
+
+
+*Contribución* es un buen nombre para estas cantidades, pues satisfacen (usando la linealidad y las definiciones
+de arriba):
+
+- Las contribuciones suman la diferencia de la predicción con la predicción media:
+$$\sum_j \phi_j(x) = f(x) - E(f(x))$$
+- Si una variable satisface $\phi_W (x) = \phi_{W\cup j} (x)$ para cualquier subconjunto de variables $W$,
+entonces $\phi_j$ es cero.
+- Si nuestro predictor se puede escribir como $f(x) = f_1(x) + f_2(x)$ entonces la contribución de cada variable
+en la predicción $f(x)$  es la suma de las contribución en $f_1$ y en $f_2$
+- Para cualquier subconjunto de variables, podemos considerar la contribución de una variable $j$ cuando agregamos
+al subcojunto la variable $j$ como  $\phi_{W \cup j} (x) - \phi_W (x)$. Si para cualquier subconjunto $W$ tenemos
+que las variables $j$ y $k$ tienen la misma contribución al agregarlos a $W$ (para toda $W$), entonces $\phi_j =\phi_k$.
+
+Ahora la pregunta es: ¿cómo definimos las contribuciones para un predictor $f$ más complejo? 
+(por ejemplo, un bosque aleatorio). Resulta que el concepto de contribución o atribución es 
+uno que se estudia en teoría de juegos, y se puede demostrar que hay una sola forma de hacerlo
+cumpliendo las propiedades señaladas arriba:
+mediante los [valores de Shapley](https://en.wikipedia.org/wiki/Shapley_value).
+
+Antes de seguir, veremos las dificultades que podemos encontrar para definir la atribución o contribuciones:
+
+#### Ejemplo {-}
+Consideramos un modelo lineal para empezar. Por ejemplo
+$$f(x_1, x_2) = \beta_0 + \beta_1 x_1 + \beta_2 x_2,$$
+¿Cómo podemos atribuir contribuciones de $x_1$ y $x_2$ para una entrada particular
+$x^* = (x_1^*, x_2^*).$
+
+En primer lugar, podríamos ver qué pasa cuando pensamos que no tenemos ninguna variable disponible.
+Esta cantidad la podríamos definir como (promediando sobre la muestra de entrenamiento):
+$$v(0) = \frac{1}{N}\sum_i f(x_1^{(i)},x_2^{(i)}) = \beta_0 + \beta_1 \bar{x_1} + \beta_2\bar{x_2}$$   
+que es la predicción media (usamos linealidad de $f$). 
+
+Ahora supongamos que usamos la variable $x_1$. En este caso,
+podríamos calcular una predicción promediando sobre la variable $x_2$, que no tenemos disponible:
+
+$$v(1) = \frac{1}{N}\sum_i f(x_1^{*},x_2^{(i)}) = \beta_0 + \beta_1 x_1^* + \beta_2\bar{x_2}$$ 
+Entonces la contribución cuando agregamos la variable 1 es:
+$$v(1) -v(0) = \beta_1(x_1^* - \bar{x_1})$$
+Ahora supongamos que ya tenemos la variable 2, y agregamos la variable 1. La predicción
+con todas las variables es
+$$v(1,2) = \beta_0 + \beta_1 x_1^* + \beta_2 x_2^*$$
+y cuando solo tenemos la variable $2$ es
+$$v(2) = \frac{1}{N}\sum_i f(x_1^{(i)},x_2^{*}) = \beta_0 + \beta_1\bar{x_1} + \beta_2 x_2^*, $$
+y la contribución en este caso es:
+$$v(1,2) - v(2) = \beta_1 (x_1^* - \bar{x_1}),$$
+que es la misma cantidad que $v(1)-v(0)$. Así que no importa como "incluyamos" la variable 1 bajo este criterio,
+el resultado es el mismo, y podemos definir la contribución de $x_1$ como definimos arriba para
+un predictor lineal.
+
+Ahora consideremos el caso más complicado donde tenemos una interacción multiplicativa:
+
+$$f(x_1, x_2) = \beta_0 + \beta_1 x_1 + \beta_2 x_2 + \beta_3x_1x_2$$
+
+Veremos qué pasa cuando seguimos la misma idea de arriba: en primer lugar, tenemos
+
+$$v(0) = \frac{1}{N}\sum_i f(x_1^{(i)},x_2^{(i)}) = 
+\beta_0 + \beta_1 \overline{x_1} + \beta_2\overline{x_2} + \beta_3\overline{x_1x_2}$$   
+
+y
+$$v(1) = \frac{1}{N}\sum_i f(x_1^{*},x_2^{(i)}) = \beta_0 + \beta_1 x_1^* + \beta_2\bar{x_2} + (\beta_3  \bar{x_2})x_1^*$$
+La contribución sería
+$$v(1)-v(0) = \beta_1(x_1^* - \bar{x_1}) +\beta_3\bar{x_2}\left(x_1^*-\frac{\overline{x_1x_2}}{\bar{x_2}}\right)$$
+Por otro lado, igual que arriba
+
+$$v(2) = \frac{1}{N}\sum_i f(x_1^{(i)},x_2^{*}) = \beta_0 + \beta_1\bar{x_1} + \beta_2 x_2^*
++ \beta_3x_2^*\bar{x_1}$$
+
+y entonces: 
+$$v(1,2) - v(2) = \beta_1(x_1^*-\bar{x_1})+ \beta_3x_2^*(x_1^* - \bar{x_1})$$
+Y las cantidades $v(1) - v(0)$ y $v(1,2)- v(2)$ no son iguales en este caso. Tenemos 
+dos órdenes distintos para poner las variables en el modelo, así que ponemos:
+
+$$\phi_1 = \frac{1}{2}(v(1,2)-v(2)) + \frac{1}{2}(v(1)-v(0)).$$
+y análogamente para 
+$$\phi_2 = \frac{1}{2}(v(1,2)-v(1)) + \frac{1}{2}(v(2)-v(0)).$$
+
+Nótese que estas cantidades satisfacen:
+$\phi_1 + \phi_2 = v(1,2) -v(0) = f(x_1^*, x_2^*) - \frac{1}{N}\sum_i f(x_1^{(i)}, x_2^{(i)}),$
+
+es decir, la diferencia entre la predicción que nos interesa y la predicción media, que es la primera
+propiedad que buscábamos.
+
+Consideremos ahora el caso de 3 variables, y nos interesa encontrar la contribución de la variable 1.
+Ahora tenemos 6 órdenes distintos para poner las variables en el predictor. Dos de ellos
+terminan con $v(1,2,3) - v(2,3)$, uno de ellos contiene la comparación $v(1,2)-v(2)$, uno de
+ellos contiene la comparación $v(1,3)-v(3)$ y dos de ellos contiene la comparación $v(1)-v(0)$.
+Así que ponderaríamos:
+
+$$\phi_1 = \frac{2}{6}(v(1,2,3) - v(2,3)) + \frac{1}{6}(v(1,2)-v(2)) + \frac{1}{6}(v(1,3)-v(3)) + \frac{2}{6}(v(1)-v(0))$$
+Puedes checar que $\phi_1+ \phi_2 +\phi_3 = f(x_1^*, x_2^*, x_3^*) - \frac{1}{N}\sum_i f(x_1^{(i)}, x_2^{(i)}, x_3^{(i)})$. Los valores así definidos satisfacen todas las propiedades que discutimos
+arriba.
+
+
+### Valores de Shapley
+
+La idea principal en los valores de Shapley es que para entender la contribución de una variable,
+es necesario considerar su contribución según distintos órdenes en el que consideramos las variables.
+
+Definimos primero la *contribución* de un conjunto de variables $S\subset M,$ donde
+$M =\{x_1, x_2\ldots, x_p\}$, marginalizando como sigue con la muestra de entrenamiento:
+
+Suponiendo que 
+$S = \{1,2,3,\ldots ,k\}$ entonces
+$$v(S) = \frac{1}{N}\sum_i f(x_1^*,x_2^*,\ldots, x_k^*, x_k^{(i)}, x_{k+1}^{(i)}, \ldots, x_p^{(i)})$$
+Donde se mantienen fijos los elementos de $S$, y promediamos sobre los elementos
+que no están en $S$. Esto podemos hacerlo para cualquier subconjunto $S$ de variables.
+Ahora consideramos una variable dada $j$, y consideramos las
+diferencias:
+$$v(S\cup {j}) - v(S)$$
+Es decir, cuánto contribuye la variable $j$ cuando la agregamos a las variables que ya
+teníamos en $S$. 
+
+El valor de Shapley de la variable $j$ es
+
+$$\phi_j = \sum_{S\subset M, j\notin S} \frac{|S|!(M - |S| -1)!}{M!} (v(S\cup j) -v(S))$$
+
+Los ponderadores están dados como discutimos arriba: hay $M!$ posibles ordenamientos
+de las variables. Los ordenamientos que incluyen la comparación $v(S\cup j) -v(S)$ 
+satisfacen: las primeras $|S|$ variables pueden haber entrado de $|S|!$, luego sigue la $j$,
+y el restante de las variables pueden entrar de $(M-|S|-1)!$ maneras.
+
+
+### Ejemplo: precios de casas {-}
+
+Consideremos entonces el bosque que construimos arriba para los precios de casas,
+y consideramos una casa particular:
+
+```{r, fig.height=10, fig.width = 10}
+set.seed(232)
+predictor_bosque <- Predictor$new(model = bosque_casas, data = casas_entrena, 
+  y = "SalePrice", 
+  predict.fun = pred_ranger, class = "regression")
+# aproximación al valor de Shapley, ver discusión más adelante
+shapley_val <- Shapley$new(predictor_bosque, x.interest = casas_entrena[21,])
+shapley_val$plot()
+```
+
+La suma de los valores phi da (aproximadamente, por el algoritmo usado) la diferencia entre nuestra predicción para esta instancia y la predicción promedio:
+
+```{r}
+sum(shapley_val$results$phi)
+```
+
+Ahora hacemos otro ejemplo:
+
+```{r, fig.height=10, fig.width = 10}
+shapley_val <- Shapley$new(predictor_bosque, x.interest = casas_entrena[52,])
+shapley_val$plot()
+```
+
+
+```{r, fig.height=10, fig.width = 10}
+shapley_val <- Shapley$new(predictor_bosque, x.interest = casas_entrena[121,])
+shapley_val$plot()
+```
+
+
+
+
+**Observaciones**:
+
+- Nótese que las contribuciones de cada variable en un mismo nivel puede ser diferente en diferentes instancias, pues los modelos que usamos típicamente incluyen interacciones.
+
+- Calcular sobre todas las posibles permutaciones de las variables es demasiado costoso. Para estimar el valor de Shapley, en *iml* se toma una muestra de permutaciones, y para cada una se calcula el 
+valor correspondiente $v(S\cup j) - v(S),$ dependiendo dónde aparece $j$, y promediando sobre las variables que no aparecen en $S$ como mostramos arriba. No es necesario ponderar la muestra de
+permutaciones.
+
+- Existen también versiones adaptadas a los árboles que son más rápìdas. 
+
+### Ejemplo {-}
+
+Para un modelo de clasificación, xgboost calcula los valores de shapley en la escala
+logit (del predictor lineal)
+
+```{r, fig.width=8, fig.height=10, message=FALSE, warning = FALSE}
+library(xgboost)
+nse_tbl <- nse_entrena %>% ungroup %>% 
+    select(ab, conex_inte, ocupados, num_tvd, educa_jefe, tam_loc, combustible, num_auto)
+mat_x <- model.matrix(ab ~ -1 + ., nse_tbl)
+d_entrena <- xgb.DMatrix(data = mat_x, label = nse_tbl$ab)
+boost_nse <- xgboost(mat_x, label = nse_tbl$ab, nrounds = 500, eta = 0.1, 
+                     max_depth = 3, subsample = .5,
+              objective = "binary:logistic", nthread = 2, verbose = 0)
+shap_nse <- xgb.plot.shap(mat_x, model = boost_nse, top_n = 9, n_col = 2)
+pred_base <- mean(nse_tbl$ab)
+```
+
+
+```{r, fig.width = 6, fig.height = 10}
+data <- shap_nse$data
+contrib <- shap_nse$shap_contrib
+dat_g <- tibble(educa_jefe = data[, "educa_jefe"], shap_educa = contrib[, "educa_jefe"],
+                shap_ocupados = contrib[, "ocupados"], ) %>% 
+    sample_n(2000)
+ggplot(dat_g, aes(x = educa_jefe, y = shap_educa, colour = shap_ocupados)) + 
+    geom_jitter(alpha = 0.9, width = 0.5, height = 0) +
+    scale_color_gradient(low="orange", high="black")
+```
+
+Y podemos ver predicciones individuales:
+
+```{r}
+graf_caso <- function(data, contrib, ind_caso, pred_base){
+    dat_tbl <- tibble(variable = colnames(data), valor = data[ind_caso, ], 
+                      shap = contrib[ind_caso,]) %>% 
+    unite("variable_valor", variable, valor) %>% 
+    mutate(variable_valor = fct_reorder(variable_valor, shap))
+    pred_logit <- log(pred_base / (1-pred_base))  + sum(dat_tbl$shap)
+    pred <- 1 / (1 + exp(-pred_logit))
+    sprintf("Predicción base: %0.2f, Predicción: %0.2f",  pred_base, pred) %>% print
+    ggplot(dat_tbl, aes(x= variable_valor, y = shap, ymax = shap, ymin = 0)) + 
+        coord_flip() +geom_point() + geom_hline(yintercept = 0, colour = "gray") +
+        geom_linerange() 
+}
+graf_caso(data, contrib, 1, pred_base)
+```
+
+
+
+```{r}
+graf_caso(data, contrib, 1012, pred_base)
+```
+
+**Discusión**:
+
+- Un valor de contribución que puede ser más apropiado para los valores Shapley es condicionando
+en cada caso a la información que se tiene durante el proceso de adición de variables. Es decir, usamos
+$$v(S) = E_{X_C|X_S}\left [ f(X_S,X_C) \,  | \,X_S = x_s^*\right \].$$
+Esta cantidad es teóricamente más apropiada para hacer predicciones cuando "no tenemos" las variables de $X_C$. Sin embargo, calcular esta cantidad es considerablemente difícil, pues requiere modelar también la conjunta
+de $(X_1,\ldots, X_p)$, lo cuál en general es difícil. Hasta en regresión lineal, incluso sin interacciones, no es
+trivial hacer estos cálculos. Generalmente se utilizan como mostramos arriba. Una desventaja clara del proceso
+como lo mostramos arriba es que puede ser que al hacer estos promedios, usemos partes del modelo con poca información y malas predicciones. Los valores de Shapley pueden ser ruidosos en este caso.
+
+- Los que mostramos arriba son llamados comunmente valores SHAP o explicación aditiva de Shapley. Existen muchas variaciones de la aplicación de valores de Shapley para entender predictores y es un tema de investigación activo.
+
+
+
