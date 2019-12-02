@@ -47,7 +47,7 @@ maneras de aproximarnos a este problema:
 - ¿Cuál es la contribución de una variable al desempeño predictivo del modelo?
 - Dada una predicción particular, ¿cómo atribuimos contribuciones a la predicción de cada variable?
 
-Usaremos como referencias [este libro](https://christophm.github.io/interpretable-ml-book/index.html) y [@ESL].
+Usaremos como referencias nuestra referencia [@ESL]. y  el libro [Interpretable Machine Learning](https://christophm.github.io/interpretable-ml-book/index.html). Este último libro todavía está en desarrollo (2019).
 
 ## ¿Cómo depende la predicción de las entradas?
 
@@ -93,7 +93,7 @@ dat_g %>% head
 Y ahora calculamos predicciones para cada valor conjunto de las variables. Conviene visualizar
 en lugar de usar tablas:
 
-```{r}
+```{r, fig.width = 8, fig.height = 5}
 dat_g$pred_lm <- predict(mod_lineal_o, dat_g)
 dat_g$pred_bosque <- predict(mod_bosque_o, dat_g)$predictions
 cuantiles_solar <- tibble(Solar.R = quantile(air_tbl$Solar.R, seq(0.1, 0.9, 0.1)))
@@ -114,7 +114,7 @@ variables en valores que nos interesen, y variar las restantes. En el siguiente
 ejemplo, fijamos localidades urbanas con mas de 100 mil habitantes que cocinan
 con gas en tanque (que es la mayoría):
 
-```{r, message = FALSE}
+```{r, message = FALSE, fig.width = 8, fig.height = 5}
 library(splines)
 nse_tbl <- read_csv("../datos/vars_tarea_enigh_2016.csv")
 nse_tbl$ab <- as.numeric(nse_tbl$nse == "AB")
@@ -190,7 +190,7 @@ $$f_1(x_1) = \alpha_0 + \alpha_1 x_1 + \alpha_2 x_1^2$$
 Nótese que esto *no es lo mismo* que la predicción que haríamos condicionado a que $X_1=x_1$, pues
 en ese caso tendríamos
 $$E(f(X)|X_1=x_1) = \beta_0 + \beta_1 x_1 + \beta_2E(X_2|X_1=x_1) + \beta_3 E(X_3|X_1=x_1) x_1^2,$$
-Que puede ser una función muy complicada de x_1 si hay relaciones entre $X_1$, $X_2$ y $X_3$. La interpretación que buscamos es la del primer ejemplo.
+Que puede ser una función muy complicada de $x_1$ si hay relaciones entre $X_1$, $X_2$ y $X_3$. La interpretación que buscamos es la del primer ejemplo.
 
 ---
 
@@ -200,7 +200,7 @@ Que puede ser una función muy complicada de x_1 si hay relaciones entre $X_1$, 
 Comparamos las gráficas de dependiencia parcial de Ozono vs Temperatura para
 los dos predictores que vimos arriba:
 
-```{r}
+```{r, message = FALSE}
 library(pdp)
 pd_temp_lm <- pdp::partial(mod_lineal_o, train = air_tbl,  pred.var = "Temp", plot = FALSE)
 pd_temp_bo <- pdp::partial(mod_bosque_o, train = air_tbl,  pred.var = "Temp", plot = FALSE)
@@ -231,9 +231,11 @@ es un subconjunto de variables de $(X_1, \ldots, X_p)$ definimos:
 
 $$f_{X_S}(x_s) = \frac{1}{n}\sum_{i=1}^n f(x_s, x_c^{(i)}),$$
 
-que es una función de $m$ variables, donde fijamos los valores de las variables en $x_s$ y promediamos sobre los datos de entrenamiento para las entradas que están en $x_c$.
+que es una función de $m$ variables, donde fijamos los valores de las variables en $x_s$ y promediamos sobre los datos de entrenamiento para las entradas 
+$x_c$ que no están en $x_s$.
 
 **Observaciones**: 
+
 - Nótese que esta marginalización se hace **sin** condicionar
 a que fijamos el valor de $x_1$, es decir: este procedimiento no es 
 la predicción que haríamos si no conociéramos el valor de $x_2$. En este caso tendríamos que condicionar 
@@ -265,7 +267,7 @@ ggplot(pd_grafs, aes(x = Temp, y = yhat, colour = Wind, group = Wind)) +
     scale_color_gradient(low="orange", high="black" ) 
 ```
 
-**Ojo**: Para evitar sobreinterpretar extrapolaciones en estas gráficas, podemos restringir agregar
+**Ojo**: Para evitar sobreinterpretar extrapolaciones en estas gráficas, podemos agregar
 información acerca de la distribución de cada variable, o restringir el rango de las variables
 que usamos en la gráfica.
 
@@ -326,8 +328,7 @@ plot(fe_nse)
 
 #### Ejemplo: interacciones {-}
 
-Mostramos cómo las gráficas de dependencia parcial pueden ser poco interpretables,
-primero en el caso en que hay una interacción fuerte entre variables fijas y promediadas. En rojo
+Mostramos cómo las gráficas de dependencia parcial pueden ser poco interpretables en el caso en que hay una interacción fuerte entre variables fijas y promediadas. En rojo
 mostramos la curva de dependencia parcial:
 
 ```{r, fig.width = 6, fig.height = 4}
@@ -395,7 +396,7 @@ Haremos nuestra comparación en la métrica de raíz del error cuadrático medio
 logarítmico. Hacemos varias repeticiones para suavizar la variación que produce el hecho
 de que tomamos permutaciones al azar de las variables:
 
-```{r, fig.width =6, fig.height= 9}
+```{r, fig.width =6, fig.height= 11}
 imp_bosque <- FeatureImp$new(predictor, loss = "rmsle", 
   compare = "difference", n.repetitions = 20)
 importancias <- imp_bosque$results %>% 
@@ -415,7 +416,7 @@ Podemos usar muestras bootstrap para repetir varias veces el análisis, y tener 
 error debidos a la variación en la muestra de prueba. Por ejemplo, con 10 repeticiones bootstrap obtenemos
 rangos de variación (la muestra de prueba es de alrededor de 350 casos):
 
-```{r, fig.width =6, fig.height= 9, cache = TRUE}
+```{r, fig.width =6, fig.height= 11, cache = TRUE}
 set.seed(12)
 replica_boot <- function(datos, bosque, respuesta){
     datos_boot <- sample_n(datos, nrow(datos), replace = T)
@@ -499,9 +500,8 @@ imp_2 <- importancias(valida_tbl, mod_2)
 g_2 <- graficar_imp(imp_2) + labs(subtitles = "Con interacciones")
 ```
 
----
 
-**Observacion 2**: La interpretación de importancia es siempre condicional al total de variables en el modelo. La inclusión o exclusión (o existencia o no de variables disponibles) de variables puede producir importancias muy distintas
+**Observacion**: La interpretación de importancia es siempre condicional al total de variables en el modelo. La inclusión o exclusión (o existencia o no de variables disponibles) de variables puede producir importancias muy distintas
 
 
 ```{r}
@@ -512,7 +512,7 @@ g_3 <- graficar_imp(imp_3)+ labs(subtitles = "Con interacciones / sin x4")
 ```
 
 
-```{r, fig.width = 6, fig.height = 6}
+```{r, fig.width = 6, fig.height = 6, message = FALSE}
 library(gridExtra)
 grafs <- list(g_0, g_1, g_3, g_2) %>% map(function(g){ g + ylim(c(-0.5, 5)) })
 grid.arrange(grobs = grafs, ncol = 2)
@@ -522,8 +522,7 @@ grid.arrange(grobs = grafs, ncol = 2)
 
 ### Resumen {-}
 
-- La importancia por permutaciones muestra en qué variables se está apoyando el modelo para
-construir las predicciones. 
+- La importancia por permutaciones muestra en qué variables se está apoyando el modelo para obtener su desempeño predictivo.
 - La importancia de variables por permutaciones es una descripción del modelo
 particular que estamos considerando. Debemos tener cuidado al interpretar estas
 importancias como "importantes" para el problema de interés, o de forma causal.
@@ -545,14 +544,15 @@ particular. ¿Cómo contribuye cada variable a la predicción f(x)?
 
 Una manera común (ojo: no es la única) de asignar contribuciones si el modelo es lineal y no tiene interacciones
 es la siguiente:
-Si $f(X_1,\ldots, X_p) = \beta_0 + \beta_1 X_1 + \cdots + \beta_p X_p$ , y 
-$x = (x_1,x_2,\ldots, x_p)$ es un caso o instancia particular, podemos
-definir la contribución $\phi_j (x)$ de la variable $j$ en la predicción como
 
-$$\phi_j (x) = \beta_j(x_j - \mu_j),$$
+Si $f(X_1,\ldots, X_p) = \beta_0 + \beta_1 X_1 + \cdots + \beta_p X_p$ , y 
+$x^* = (x_1^*^,x_2^*,\ldots, x_p^*)$ es un caso o instancia particular, podemos
+definir la contribución $\phi_j = \phi_j (x^*)$ de la variable $j$ en la predicción como
+
+$$\phi_j  = \beta_j(x_j^* - \mu_j),$$
 donde $\mu_j$ es la media de la variable $x_j$ (por ejemplo en el conjunto de entrenamiento). Podemos
 también definir fácilmente la contribución de un subconjunto $W$ de variables dada, como
-$$\phi_W (x) = \sum_{j\in W} \beta_j(x_j - \mu_j)$$. 
+$$\phi_W (x) = \sum_{j\in W} \beta_j(x_j^* - \mu_j)$$. 
 
 
 *Contribución* es un buen nombre para estas cantidades, pues satisfacen (usando la linealidad y las definiciones
@@ -560,7 +560,7 @@ de arriba):
 
 - Las contribuciones suman la diferencia de la predicción con la predicción media:
 $$\sum_j \phi_j(x) = f(x) - E(f(x))$$
-- Si una variable satisface $\phi_W (x) = \phi_{W,j} (x)$ para cualquier subconjunto de variables $W$,
+- Si una variable satisface $\phi_W (x) = \phi_{W\cup j} (x)$ para cualquier subconjunto de variables $W$,
 entonces $\phi_j$ es cero.
 - Si nuestro predictor se puede escribir como $f(x) = f_1(x) + f_2(x)$ entonces la contribución de cada variable
 en la predicción $f(x)$  es la suma de las contribución en $f_1$ y en $f_2$
@@ -597,10 +597,10 @@ Ahora supongamos que ya tenemos la variable 2, y agregamos la variable 1. La pre
 con todas las variables es
 $$v(1,2) = \beta_0 + \beta_1 x_1^* + \beta_2 x_2^*$$
 y cuando solo tenemos la variable $2$ es
-$$v(2) = \frac{1}{N}\sum_i f(x_1^{(i)},x_2^{*}) = \beta_0 + + \beta_1\bar{x_1} + \beta_2 x_2^* $$
-y entonces la contribución en este caso es:
-$$v(1,2) - v(2) = \beta_1 (x_1^* - \bar{x_1})$$
-que es la misma cantidad. Así que no importa como "incluyamos" la variable 1 bajo este criterio,
+$$v(2) = \frac{1}{N}\sum_i f(x_1^{(i)},x_2^{*}) = \beta_0 + \beta_1\bar{x_1} + \beta_2 x_2^*, $$
+y la contribución en este caso es:
+$$v(1,2) - v(2) = \beta_1 (x_1^* - \bar{x_1}),$$
+que es la misma cantidad que $v(1)-v(0)$. Así que no importa como "incluyamos" la variable 1 bajo este criterio,
 el resultado es el mismo, y podemos definir la contribución de $x_1$ como definimos arriba para
 un predictor lineal.
 
@@ -658,7 +658,7 @@ $M =\{x_1, x_2\ldots, x_p\}$, marginalizando como sigue con la muestra de entren
 
 Suponiendo que 
 $S = \{1,2,3,\ldots ,k\}$ entonces
-$$v(S) = \frac{1}{N}\sum_i f(x_1,x_2,\ldots, x_k, x_k^{(i)}, x_{k+1}^{(i)}, \ldots, x_p^{(i)})$$
+$$v(S) = \frac{1}{N}\sum_i f(x_1^*,x_2^*,\ldots, x_k^*, x_k^{(i)}, x_{k+1}^{(i)}, \ldots, x_p^{(i)})$$
 Donde se mantienen fijos los elementos de $S$, y promediamos sobre los elementos
 que no están en $S$. Esto podemos hacerlo para cualquier subconjunto $S$ de variables.
 Ahora consideramos una variable dada $j$, y consideramos las
@@ -729,7 +729,7 @@ permutaciones.
 Para un modelo de clasificación, xgboost calcula los valores de shapley en la escala
 logit (del predictor lineal)
 
-```{r, fig.width=8, fig.height=10}
+```{r, fig.width=8, fig.height=10, message=FALSE, warning = FALSE}
 library(xgboost)
 nse_tbl <- nse_entrena %>% ungroup %>% 
     select(ab, conex_inte, ocupados, num_tvd, educa_jefe, tam_loc, combustible, num_auto)
@@ -743,7 +743,7 @@ pred_base <- mean(nse_tbl$ab)
 ```
 
 
-```{r}
+```{r, fig.width = 6, fig.height = 10}
 data <- shap_nse$data
 contrib <- shap_nse$shap_contrib
 dat_g <- tibble(educa_jefe = data[, "educa_jefe"], shap_educa = contrib[, "educa_jefe"],
@@ -777,3 +777,4 @@ graf_caso(data, contrib, 1, pred_base)
 ```{r}
 graf_caso(data, contrib, 1012, pred_base)
 ```
+
