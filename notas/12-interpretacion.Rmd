@@ -138,7 +138,7 @@ grid_pred <- list(conex_inte = c("Si", "No"),
                   combustible = c("gas_tanque")) %>% 
                   cross_df() 
 grid_pred$prob_glm <- predict(mod_lineal, grid_pred, type = "response")
-grid_pred$prob_bosque <- predict(mod_bosque, grid_pred)$predictions[, 2]
+grid_pred$prob_bosque <- predict(mod_bosque, grid_pred)$predictions[, 1]
 g_1 <- ggplot(grid_pred, aes(x = ocupados, y = prob_bosque, colour = num_tvd, 
                              group=factor(num_tvd))) +
     facet_grid(conex_inte ~educa_jefe, labeller = label_both) + geom_point() +
@@ -724,7 +724,7 @@ permutaciones.
 Para un modelo de clasificación, xgboost calcula los valores de shapley en la escala
 logit (del predictor lineal)
 
-```{r, fig.width=7, fig.height=12, message=FALSE, warning = FALSE}
+```{r, fig.width=7, fig.height=13, message=FALSE, warning = FALSE}
 library(xgboost)
 nse_tbl <- nse_entrena %>% ungroup %>% 
     select(ab, conex_inte, ocupados, num_tvd, educa_jefe, tam_loc, combustible, num_auto)
@@ -733,7 +733,7 @@ d_entrena <- xgb.DMatrix(data = mat_x, label = nse_tbl$ab)
 boost_nse <- xgboost(mat_x, label = nse_tbl$ab, nrounds = 500, eta = 0.1, 
                      max_depth = 3, subsample = .5,
               objective = "binary:logistic", nthread = 2, verbose = 0)
-shap_nse <- xgb.plot.shap(mat_x, model = boost_nse, top_n = 9, n_col = 2)
+shap_nse <- xgb.plot.shap(mat_x, model = boost_nse, top_n = 8, n_col = 2)
 pred_base <- mean(nse_tbl$ab)
 ```
 
