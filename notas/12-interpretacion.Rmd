@@ -35,7 +35,7 @@ es importante en sí:
 
 - Es parte de los primeros dos tipos de entendimiento o interpretación (por ejemplo, ¿cómo funcionan las interacciones en este modelo particular?).
 - Queremos explicar cómo nuestra predicción utiliza las variables de entrada para hacer predicciones 
-(por transparencia, producir confiabilidad,  o como diagnóstico que constrastamos con lo que sabemos del dominio de intéres).
+(por transparencia, producir confiabilidad,  o como diagnheóstico que constrastamos con lo que sabemos del dominio de intéres).
 - Queremos transparentar predicciones particulares, para saber cómo afectan distintas variables una decisión posterior basada en esa predicción (por ejemplo, por qué a alguien se le niega un crédito)
 
 ## Interpretación: primeras observaciones
@@ -138,7 +138,7 @@ grid_pred <- list(conex_inte = c("Si", "No"),
                   combustible = c("gas_tanque")) %>% 
                   cross_df() 
 grid_pred$prob_glm <- predict(mod_lineal, grid_pred, type = "response")
-grid_pred$prob_bosque <- predict(mod_bosque, grid_pred)$predictions[, 1]
+grid_pred$prob_bosque <- predict(mod_bosque, grid_pred)$predictions[, 2]
 g_1 <- ggplot(grid_pred, aes(x = ocupados, y = prob_bosque, colour = num_tvd, 
                              group=factor(num_tvd))) +
     facet_grid(conex_inte ~educa_jefe, labeller = label_both) + geom_point() +
@@ -724,7 +724,7 @@ permutaciones.
 Para un modelo de clasificación, xgboost calcula los valores de shapley en la escala
 logit (del predictor lineal)
 
-```{r, fig.width=8, fig.height=10, message=FALSE, warning = FALSE}
+```{r, fig.width=7, fig.height=12, message=FALSE, warning = FALSE}
 library(xgboost)
 nse_tbl <- nse_entrena %>% ungroup %>% 
     select(ab, conex_inte, ocupados, num_tvd, educa_jefe, tam_loc, combustible, num_auto)
@@ -777,7 +777,7 @@ graf_caso(data, contrib, 1012, pred_base)
 
 - Un valor de contribución que puede ser más apropiado para los valores Shapley es condicionando
 en cada caso a la información que se tiene durante el proceso de adición de variables. Es decir, usamos
-$$v(S) = E_{X_C|X_S}\left [ f(X_S,X_C) \,  | \,X_S = x_s^*\right \].$$
+$$v(S) = E_{X_C|X_S}[ f(X_S,X_C) \,  | \, X_S = x_s^* \right].$$
 Esta cantidad es teóricamente más apropiada para hacer predicciones cuando "no tenemos" las variables de $X_C$. Sin embargo, calcular esta cantidad es considerablemente difícil, pues requiere modelar también la conjunta
 de $(X_1,\ldots, X_p)$, lo cuál en general es difícil. Hasta en regresión lineal, incluso sin interacciones, no es
 trivial hacer estos cálculos. Generalmente se utilizan como mostramos arriba. Una desventaja clara del proceso
