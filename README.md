@@ -33,5 +33,5 @@ pero si tienes problemas de reproducibilidad puedes intentarlo.
 
 En años anteriores han contribuido a este repositorio:
 
-- Cinco o más commits: [AlejandraLLI](https://github.com/AlejandraLLI), [mkokotchikova](https://github.com/mkokotchikova)
+- Cinco o más commits: [AlejandraLLI](https://github.com/AlejandraLLI), [mkokotchikova](https://github.com/mkokotchikova), [Cesar Zamora Martinez](https://github.com/czammar)
 - Menos de cinco commits: [FedericoGarza](https://github.com/FedericoGarza), [juanber91](https://github.com/juanber91), [MrFranciscoPaz](https://github.com/MrFranciscoPaz)
